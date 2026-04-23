@@ -1,2 +1,2 @@
 # chess-club-hub
-Chess with friends simple and light
+A chess platform for school clubs — play, review, and run tournaments
