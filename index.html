@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Club Hub ♟️</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ── Nav ───────────────────────────────────────────────────── -->
+<nav>
+  <span class="nav-logo">♟️ Chess Club Hub</span>
+  <div class="nav-links">
+    <button class="nav-btn active" data-page="home">Home</button>
+    <button class="nav-btn" data-page="play">Play</button>
+    <button class="nav-btn" data-page="review">Review</button>
+    <button class="nav-btn" data-page="tournament">Tournament</button>
+    <button class="nav-btn" data-page="leaderboard">Leaderboard</button>
+  </div>
+</nav>
+
+<!-- ── Home ──────────────────────────────────────────────────── -->
+<section class="page active" id="page-home">
+  <h1 class="page-title">Welcome to Chess Club Hub 👑</h1>
+  <p class="subtitle">Play, review, and compete with your chess club friends.</p>
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;">
+    <button class="btn btn-gold" onclick="nav('play')">▶ Play a Game</button>
+    <button class="btn btn-surface" onclick="nav('tournament')">🏆 Start Tournament</button>
+    <button class="btn btn-outline" onclick="nav('review')">📋 Review Games</button>
+  </div>
+
+  <div class="card" style="margin-bottom:1rem;">
+    <h3 style="margin-bottom:.75rem;color:var(--gold);">Your Profile</h3>
+    <div class="field">
+      <label>Your Name</label>
+      <input type="text" id="profile-name" placeholder="Enter your name..." maxlength="24" />
+    </div>
+    <button class="btn btn-emerald btn-sm" onclick="saveProfileName()">Save</button>
+    <div id="profile-stats" style="margin-top:1rem;">
+      <div style="display:flex;gap:1.5rem;font-size:.9rem;margin-bottom:.75rem;">
+        <span>🏅 <strong id="stat-wins">0</strong> Wins</span>
+        <span>💔 <strong id="stat-losses">0</strong> Losses</span>
+        <span>🤝 <strong id="stat-draws">0</strong> Draws</span>
+      </div>
+      <div id="elo-badge" style="display:inline-flex;align-items:center;gap:.5rem;background:var(--surface2);padding:.4rem .9rem;border-radius:20px;font-size:.9rem;border:1px solid var(--border);">
+        <span id="elo-icon">🟤</span>
+        <span id="elo-rating" style="font-weight:700;font-family:monospace;">800</span>
+        <span id="elo-title" style="color:var(--text-dim);">Beginner</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:.75rem;color:var(--gold);">Recent Games</h3>
+    <div id="home-recent-games"><p style="color:var(--text-dim);font-size:.9rem;">No games yet. Play one!</p></div>
+  </div>
+</section>
+
+<!-- ── Play ───────────────────────────────────────────────────── -->
+<section class="page" id="page-play">
+  <h1 class="page-title">Play Chess ♟️</h1>
+
+  <!-- Setup panel -->
+  <div id="play-setup">
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;">
+      <button class="btn btn-gold"    onclick="showLocalSetup()">👥 Local (Same Device)</button>
+      <button class="btn btn-emerald" onclick="showComputerSetup()">🤖 vs Computer</button>
+      <button class="btn btn-surface" onclick="showCreateRoom()">🌐 Create Online Room</button>
+      <button class="btn btn-outline" onclick="showJoinRoom()">🔑 Join Room</button>
+    </div>
+
+    <!-- Local setup -->
+    <div id="local-setup" class="card" style="display:none;margin-bottom:1rem;">
+      <h3 style="margin-bottom:.75rem;">Local Game Setup</h3>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <div class="field" style="flex:1;">
+          <label>White Player</label>
+          <input type="text" id="local-white" placeholder="Player 1" maxlength="20" />
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Black Player</label>
+          <input type="text" id="local-black" placeholder="Player 2" maxlength="20" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Time Control</label>
+        <select id="local-time-control"></select>
+      </div>
+      <button class="btn btn-gold" onclick="startGame('local')">Start Game</button>
+    </div>
+
+    <!-- Computer setup -->
+    <div id="computer-setup" class="card" style="display:none;margin-bottom:1rem;">
+      <h3 style="margin-bottom:.75rem;">Play vs Computer 🤖</h3>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <div class="field" style="flex:1;">
+          <label>Your Name</label>
+          <input type="text" id="cpu-player-name" placeholder="Your name..." maxlength="20" />
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Play As</label>
+          <select id="cpu-player-color">
+            <option value="w">White</option>
+            <option value="b">Black</option>
+            <option value="r">Random</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Difficulty</label>
+        <div id="difficulty-btns" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.3rem;"></div>
+      </div>
+      <div class="field">
+        <label>Time Control</label>
+        <select id="cpu-time-control"></select>
+      </div>
+      <button class="btn btn-gold" onclick="startGame('cpu')">Start Game</button>
+    </div>
+
+    <!-- Online create -->
+    <div id="create-room-panel" class="card" style="display:none;margin-bottom:1rem;">
+      <h3 style="margin-bottom:.75rem;">Create Online Room</h3>
+      <p class="subtitle">Share the room code with your opponent.</p>
+      <div class="field">
+        <label>Your Name</label>
+        <input type="text" id="host-name" placeholder="Your name..." maxlength="20" />
+      </div>
+      <div class="field">
+        <label>Time Control</label>
+        <select id="online-time-control"></select>
+      </div>
+      <button class="btn btn-gold" onclick="createOnlineRoom()">Generate Room Code</button>
+      <div id="room-code-display" style="display:none;margin-top:1rem;">
+        <div class="room-code" id="room-code-text"></div>
+        <p style="text-align:center;margin-top:.75rem;color:var(--text-dim);font-size:.85rem;">Waiting for opponent to join...</p>
+        <div style="display:flex;justify-content:center;margin-top:.5rem;">
+          <button class="btn btn-surface btn-sm" onclick="copyRoomCode()">📋 Copy Code</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Online join -->
+    <div id="join-room-panel" class="card" style="display:none;margin-bottom:1rem;">
+      <h3 style="margin-bottom:.75rem;">Join Room</h3>
+      <div class="field">
+        <label>Your Name</label>
+        <input type="text" id="guest-name" placeholder="Your name..." maxlength="20" />
+      </div>
+      <div class="field">
+        <label>Room Code</label>
+        <input type="text" id="join-code" placeholder="XXXXXX" maxlength="6"
+               style="text-transform:uppercase;letter-spacing:.2em;font-size:1.1rem;" />
+      </div>
+      <button class="btn btn-emerald" onclick="joinOnlineRoom()">Join Game</button>
+    </div>
+  </div>
+
+  <!-- Active game board -->
+  <div id="play-game" style="display:none;">
+    <div class="game-layout">
+      <!-- Board side -->
+      <div class="board-wrap">
+        <div class="player-bar" id="bar-black">
+          <div class="player-color black"></div>
+          <span class="player-name" id="name-black">Black</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:.5rem;">
+            <span id="elo-black" style="font-size:.75rem;color:var(--text-dim);"></span>
+            <span class="player-timer" id="timer-black" style="display:none;">5:00</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.25rem;">
+          <div class="coord-rank" id="rank-labels"></div>
+          <div class="board" id="chessboard"></div>
+        </div>
+        <div class="coord-file" id="file-labels"></div>
+        <div class="player-bar" id="bar-white">
+          <div class="player-color white"></div>
+          <span class="player-name" id="name-white">White</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:.5rem;">
+            <span id="elo-white" style="font-size:.75rem;color:var(--text-dim);"></span>
+            <span class="player-timer" id="timer-white" style="display:none;">5:00</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="game-sidebar">
+        <div class="status-bar playing" id="game-status">White to move</div>
+
+        <!-- CPU thinking indicator -->
+        <div id="cpu-thinking" style="display:none;text-align:center;padding:.5rem;color:var(--gold);font-size:.9rem;animation:pulse 1s infinite;">
+          🤖 Computer is thinking...
+        </div>
+
+        <div class="card" style="padding:.75rem;">
+          <h3 style="margin-bottom:.5rem;font-size:.85rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;">Moves</h3>
+          <div class="move-list" id="move-list"></div>
+        </div>
+
+        <!-- Online room info -->
+        <div id="online-info" style="display:none;" class="card">
+          <p style="font-size:.8rem;color:var(--text-dim);">Room Code</p>
+          <div style="font-size:1.4rem;font-weight:800;letter-spacing:.15em;color:var(--gold);font-family:monospace;" id="active-room-code"></div>
+        </div>
+
+        <!-- Chat -->
+        <div id="chat-panel" style="display:none;" class="card">
+          <h3 style="margin-bottom:.5rem;font-size:.85rem;color:var(--text-dim);">Chat</h3>
+          <div class="chat-box" id="chat-messages"></div>
+          <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+            <input type="text" id="chat-input" placeholder="Message..." maxlength="80" />
+            <button class="btn btn-surface btn-sm" onclick="sendChatMsg()">Send</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="offerDraw()">🤝 Draw</button>
+          <button class="btn btn-red btn-sm"     onclick="resignGame()">🏳 Resign</button>
+          <button class="btn btn-surface btn-sm" onclick="endAndSave()">💾 Save</button>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="flipBoard()">🔄 Flip Board</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Promotion modal -->
+  <div class="modal-overlay" id="promo-modal" style="display:none;">
+    <div class="modal">
+      <h3>Promote Pawn</h3>
+      <div class="promo-pieces">
+        <button class="promo-btn" onclick="promote('Q')">♛</button>
+        <button class="promo-btn" onclick="promote('R')">♜</button>
+        <button class="promo-btn" onclick="promote('B')">♝</button>
+        <button class="promo-btn" onclick="promote('N')">♞</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ELO result modal -->
+  <div class="modal-overlay" id="elo-modal" style="display:none;">
+    <div class="modal" style="min-width:320px;">
+      <h2 id="elo-modal-title" style="margin-bottom:1rem;"></h2>
+      <div id="elo-modal-body"></div>
+      <div style="display:flex;gap:.5rem;justify-content:center;margin-top:1.25rem;">
+        <button class="btn btn-gold" onclick="closeEloModal()">Done</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Review ─────────────────────────────────────────────────── -->
+<section class="page" id="page-review">
+  <h1 class="page-title">Game Review 📋</h1>
+  <div id="review-list">
+    <div id="review-games-list"></div>
+  </div>
+  <div id="review-board-view" style="display:none;">
+    <button class="btn btn-outline btn-sm" style="margin-bottom:1rem;" onclick="backToList()">← Back to Games</button>
+    <div class="game-layout">
+      <div class="board-wrap">
+        <div class="board" id="review-board"></div>
+      </div>
+      <div class="game-sidebar">
+        <div class="card" style="padding:.75rem;">
+          <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap;">
+            <button class="btn btn-surface btn-sm" onclick="reviewNav('start')">⏮</button>
+            <button class="btn btn-surface btn-sm" onclick="reviewNav('prev')">◀</button>
+            <button class="btn btn-surface btn-sm" onclick="reviewNav('next')">▶</button>
+            <button class="btn btn-surface btn-sm" onclick="reviewNav('end')">⏭</button>
+          </div>
+          <div class="move-list" id="review-move-list" style="max-height:300px;"></div>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:.5rem;">Annotation</h3>
+          <textarea id="annotation-text" rows="3" placeholder="Add your thoughts..." style="resize:vertical;"></textarea>
+          <button class="btn btn-surface btn-sm" style="margin-top:.5rem;" onclick="saveAnnotation()">Save Note</button>
+        </div>
+        <button class="btn btn-surface btn-sm" onclick="exportCurrentGame()">⬇ Export PGN</button>
+        <button class="btn btn-red btn-sm"     onclick="deleteCurrentGame()">🗑 Delete Game</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Tournament ─────────────────────────────────────────────── -->
+<section class="page" id="page-tournament">
+  <h1 class="page-title">Tournaments 🏆</h1>
+  <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+    <button class="btn btn-gold" onclick="showNewTournament()">+ New Tournament</button>
+  </div>
+  <div id="new-tournament-form" class="card" style="display:none;margin-bottom:1.5rem;">
+    <h3 style="margin-bottom:.75rem;">Create Tournament</h3>
+    <div class="field">
+      <label>Tournament Name</label>
+      <input type="text" id="t-name" placeholder="Spring Championship..." maxlength="40" />
+    </div>
+    <div class="field">
+      <label>Number of Players</label>
+      <select id="t-size">
+        <option value="4">4 Players</option>
+        <option value="8">8 Players</option>
+      </select>
+    </div>
+    <div id="t-player-fields"></div>
+    <div style="display:flex;gap:.5rem;">
+      <button class="btn btn-gold"    onclick="createTournamentNow()">Create Bracket</button>
+      <button class="btn btn-outline" onclick="hideNewTournament()">Cancel</button>
+    </div>
+  </div>
+  <div id="tournament-list"></div>
+</section>
+
+<!-- ── Leaderboard ────────────────────────────────────────────── -->
+<section class="page" id="page-leaderboard">
+  <h1 class="page-title">Club Leaderboard 🥇</h1>
+
+  <!-- Tab switcher -->
+  <div style="display:flex;gap:.5rem;margin-bottom:1rem;">
+    <button class="btn btn-gold btn-sm"    id="tab-elo"   onclick="switchTab('elo')">⚡ ELO Ratings</button>
+    <button class="btn btn-outline btn-sm" id="tab-wins"  onclick="switchTab('wins')">🏅 Win/Loss</button>
+  </div>
+
+  <!-- ELO leaderboard -->
+  <div id="lb-elo" class="card">
+    <table class="leaderboard" id="elo-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Player</th><th>Title</th><th>ELO</th>
+          <th>W</th><th>L</th><th>D</th><th>Games</th>
+        </tr>
+      </thead>
+      <tbody id="elo-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Win/Loss leaderboard -->
+  <div id="lb-wins" class="card" style="display:none;">
+    <table class="leaderboard" id="leaderboard-table">
+      <thead>
+        <tr><th>#</th><th>Player</th><th>Score</th><th>W</th><th>L</th><th>D</th><th>Games</th></tr>
+      </thead>
+      <tbody id="leaderboard-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+@keyframes pulse {
+  0%,100% { opacity:1; } 50% { opacity:.4; }
+}
+.timer-low { color: var(--red) !important; animation: pulse .6s infinite; }
+</style>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
