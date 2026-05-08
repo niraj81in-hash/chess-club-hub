@@ -1,0 +1,21 @@
+{
+  "name": "chess-club-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A chess platform for school clubs — play, review, and run tournaments",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "eslint": "^9",
+    "vite": "^6",
+    "vitest": "^3",
+    "jsdom": "^26"
+  }
+}

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Club Hub</title>
+  <style>
+    :root { --bg: #1a1a2e; --fg: #e0e0e0; --accent: #0f3460; --highlight: #e94560; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem; }
+    h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+    .subtitle { color: #888; margin-bottom: 1.5rem; }
+    .board { display: grid; grid-template-columns: repeat(8, 60px); grid-template-rows: repeat(8, 60px); border: 3px solid var(--accent); border-radius: 4px; overflow: hidden; }
+    .cell { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; font-size: 2rem; cursor: pointer; user-select: none; transition: background 0.15s; }
+    .cell.light { background: #f0d9b5; }
+    .cell.dark { background: #b58863; }
+    .cell.selected { background: var(--highlight) !important; }
+    .cell.legal { position: relative; }
+    .cell.legal::after { content: ''; position: absolute; width: 18px; height: 18px; background: rgba(0,0,0,0.25); border-radius: 50%; }
+    .info { margin-top: 1rem; font-size: 1.1rem; padding: 0.5rem 1rem; background: var(--accent); border-radius: 6px; }
+    .moves { margin-top: 1rem; max-width: 500px; word-wrap: break-word; font-size: 0.95rem; color: #aaa; }
+    .controls { margin-top: 1rem; display: flex; gap: 0.5rem; }
+    .controls button { padding: 0.5rem 1rem; border: none; border-radius: 4px; background: var(--accent); color: var(--fg); cursor: pointer; font-size: 0.95rem; }
+    .controls button:hover { background: var(--highlight); }
+  </style>
+</head>
+<body>
+  <h1>♔ Chess Club Hub</h1>
+  <p class="subtitle">A chess platform for school clubs</p>
+  <div class="board" id="board"></div>
+  <div class="info" id="info">White to move</div>
+  <div class="moves" id="moves"></div>
+  <div class="controls">
+    <button id="newGame">New Game</button>
+    <button id="exportPgn">Export PGN</button>
+  </div>
+
+  <script type="module">
+    import { PIECES, initGameState, color, legalMoves, makeMove, toSAN } from './engine.js';
+    import { exportPGN } from './pgn.js';
+
+    let state = initGameState();
+    let selected = null;
+    let legalSquares = [];
+
+    const boardEl = document.getElementById('board');
+    const infoEl = document.getElementById('info');
+    const movesEl = document.getElementById('moves');
+
+    function render() {
+      boardEl.innerHTML = '';
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+          if (selected && selected[0] === r && selected[1] === c)
+            cell.classList.add('selected');
+          if (legalSquares.some(([lr, lc]) => lr === r && lc === c))
+            cell.classList.add('legal');
+          const piece = state.board[r][c];
+          if (piece) cell.textContent = PIECES[piece];
+          cell.dataset.r = r;
+          cell.dataset.c = c;
+          cell.addEventListener('click', () => onCellClick(r, c));
+          boardEl.appendChild(cell);
+        }
+      }
+      const turnName = state.turn === 'w' ? 'White' : 'Black';
+      if (state.status === 'checkmate')
+        infoEl.textContent = `Checkmate! ${state.winner === 'w' ? 'White' : 'Black'} wins.`;
+      else if (state.status === 'stalemate')
+        infoEl.textContent = 'Stalemate — draw.';
+      else if (state.status === 'draw')
+        infoEl.textContent = 'Draw (50-move rule).';
+      else if (state.status === 'check')
+        infoEl.textContent = `${turnName} to move (check!)`;
+      else
+        infoEl.textContent = `${turnName} to move`;
+
+      const moves = state.history;
+      let san = '';
+      for (let i = 0; i < moves.length; i++) {
+        if (i % 2 === 0) san += `${Math.floor(i / 2) + 1}. `;
+        san += (moves[i].san || '??') + ' ';
+      }
+      movesEl.textContent = san.trim();
+    }
+
+    function onCellClick(r, c) {
+      if (state.status === 'checkmate' || state.status === 'stalemate' || state.status === 'draw') return;
+
+      if (selected) {
+        if (legalSquares.some(([lr, lc]) => lr === r && lc === c)) {
+          const san = toSAN(state.board, selected, [r, c]);
+          state = makeMove(state, selected, [r, c]);
+          state.history[state.history.length - 1].san = san;
+          selected = null;
+          legalSquares = [];
+          render();
+          return;
+        }
+      }
+
+      const piece = state.board[r][c];
+      if (piece && color(piece) === state.turn) {
+        selected = [r, c];
+        legalSquares = legalMoves(state, r, c);
+      } else {
+        selected = null;
+        legalSquares = [];
+      }
+      render();
+    }
+
+    document.getElementById('newGame').addEventListener('click', () => {
+      state = initGameState();
+      selected = null;
+      legalSquares = [];
+      render();
+    });
+
+    document.getElementById('exportPgn').addEventListener('click', () => {
+      const record = {
+        white: 'Player 1', black: 'Player 2',
+        result: state.status === 'checkmate' ? (state.winner === 'w' ? '1-0' : '0-1') : '*',
+        date: new Date().toISOString().slice(0, 10),
+        event: 'Chess Club Hub Game',
+        moves: state.history
+      };
+      const pgn = exportPGN(record);
+      alert(pgn);
+    });
+
+    render();
+  </script>
+</body>
+</html>
