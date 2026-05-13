@@ -279,7 +279,7 @@ function renderBoard() {
       sq.dataset.r = r; sq.dataset.c = c;
 
       const piece = gameState.board[r][c];
-      if (piece) sq.textContent = PIECES[piece];
+      if (piece) { sq.textContent = PIECES[piece]; sq.dataset.pieceColor = piece[0]; }
       if (selected && selected[0]===r && selected[1]===c) sq.classList.add('selected');
       if (hints.some(([hr,hc]) => hr===r && hc===c))
         sq.classList.add(gameState.board[r][c] ? 'capture-hint' : 'move-hint');
@@ -640,7 +640,7 @@ function renderReviewBoard() {
   for(let r=0;r<8;r++) for(let c=0;c<8;c++){
     const sq=document.createElement('div');
     sq.className=`sq ${(r+c)%2===0?'light':'dark'}`;
-    const piece=state.board[r][c]; if(piece) sq.textContent=PIECES[piece];
+    const piece=state.board[r][c]; if(piece) { sq.textContent=PIECES[piece]; sq.dataset.pieceColor=piece[0]; }
     board.appendChild(sq);
   }
   document.getElementById('annotation-text').value=(reviewGame.annotations||{})[reviewIdx]||'';

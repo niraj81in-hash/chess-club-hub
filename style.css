@@ -169,6 +169,15 @@ label { font-size: .85rem; color: var(--text-dim); display: block; margin-bottom
 .sq.selected { background: var(--sel-sq) !important; }
 .sq.in-check { background: var(--check-sq) !important; }
 
+.sq[data-piece-color="w"] {
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 1px 3px rgba(0,0,0,0.85);
+}
+.sq[data-piece-color="b"] {
+  color: #111;
+  text-shadow: 0 0 2px rgba(255,255,255,0.9), 0 1px 3px rgba(255,255,255,0.65);
+}
+
 .sq.move-hint::after {
   content: '';
   position: absolute;
