@@ -108,7 +108,7 @@ export function validateRegistrationForm(data) {
   const name = data.playerName.trim();
   if (name.length < 2 || name.length > 50) return 'Player name must be 2–50 characters';
   const email = String(data.playerEmail || '');
-  if (!VALID_EMAIL_RE.test(email)) return 'Valid email address is required';
+  if (!VALID_EMAIL_RE.test(email)) return 'Valid player email is required';
   return null;
 }
 
@@ -121,8 +121,9 @@ function csvCell(value) {
 function fmtDatetime(isoString) {
   if (!isoString) return '';
   const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '';
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
 
 export function generateCSV(registrations) {
@@ -131,7 +132,7 @@ export function generateCSV(registrations) {
     i + 1,
     csvCell(r.playerName),
     csvCell(r.playerEmail),
-    r.status,
+    csvCell(r.status),
     fmtDatetime(r.registeredAt),
     fmtDatetime(r.checkedInAt),
     r.waitlistPosition == null ? '' : r.waitlistPosition,
