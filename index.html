@@ -6,6 +6,9 @@
   <title>Chess Club Hub ♟️</title>
   <meta name="description" content="Chess Club Hub — play, review, and run tournaments for your school chess club. Online play, ELO ratings, Swiss pairings, and event management." />
   <meta name="theme-color" content="#8b5cf6" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 
   <!-- Open Graph -->
   <meta property="og:type"        content="website" />
@@ -428,5 +431,12 @@
 </style>
 
 <script type="module" src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW registration failed', e));
+    });
+  }
+</script>
 </body>
 </html>
