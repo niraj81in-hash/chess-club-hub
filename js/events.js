@@ -7,6 +7,7 @@
 // triggering Firebase CDN imports, which are not available in Node.js.
 
 let firestore = null;
+let firestoreInitPromise = null;
 
 const VALID_FORMATS = ['swiss', 'round_robin', 'single_elim', 'arena'];
 
@@ -16,12 +17,17 @@ async function getRelay() {
 
 async function initFirestore() {
   if (firestore) return;
-  const { initFirebase } = await getRelay();
-  await initFirebase();
-  const { getApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const { getFirestore } =
-    await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  firestore = getFirestore(getApp());
+  if (!firestoreInitPromise) {
+    firestoreInitPromise = (async () => {
+      const { initFirebase } = await getRelay();
+      await initFirebase();
+      const { getApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+      const { getFirestore } =
+        await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+      firestore = getFirestore(getApp());
+    })();
+  }
+  await firestoreInitPromise;
 }
 
 async function callFn(name, data) {
@@ -101,6 +107,7 @@ function normalizeEvent(docSnapshot) {
  * Parses only the YYYY-MM-DD portion to avoid timezone shifts.
  */
 export function formatEventDate(isoString) {
+  if (!isoString) return '';
   const datePart = String(isoString).slice(0, 10);
   const [year, month, day] = datePart.split('-').map(Number);
   return new Date(year, month - 1, day).toLocaleDateString('en-US', {
