@@ -21,6 +21,9 @@ setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
 
 admin.initializeApp();
 const db = admin.database();
+const firestoreDb = admin.firestore();
+const { validateCreatePayload, validateUpdatePayload, validatePublishPayload } =
+  require('./events-validate.js');
 
 const DEFAULT_RATING = 800;
 const PROVISIONAL_GAMES = 20;
@@ -232,6 +235,118 @@ exports.recordOnlineGameResult = onCall({ cors: true }, async (request) => {
       changeA,
       changeB,
     };
+  } catch (e) {
+    if (!(e instanceof HttpsError)) Sentry.captureException(e);
+    throw e;
+  }
+});
+
+exports.createEvent = onCall({ cors: true }, async (request) => {
+  try {
+    if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in required');
+    const data = request.data || {};
+    const validationError = validateCreatePayload(data);
+    if (validationError) throw new HttpsError('invalid-argument', validationError);
+
+    const uid = request.auth.uid;
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const docRef = firestoreDb.collection('events').doc();
+    await docRef.set({
+      title: data.title.trim(),
+      organizerUid: uid,
+      startDate: admin.firestore.Timestamp.fromDate(new Date(data.startDate)),
+      endDate: admin.firestore.Timestamp.fromDate(new Date(data.endDate)),
+      location: {
+        address: (data.location?.address || '').trim(),
+        city: data.location.city.trim(),
+        state: data.location.state.trim().toUpperCase(),
+      },
+      format: data.format,
+      sections: [],
+      entryFee: 0,
+      currency: 'USD',
+      maxPlayers: Number(data.maxPlayers),
+      status: 'draft',
+      uscfRated: Boolean(data.uscfRated),
+      country: 'US',
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { eventId: docRef.id };
+  } catch (e) {
+    if (!(e instanceof HttpsError)) Sentry.captureException(e);
+    throw e;
+  }
+});
+
+exports.updateEvent = onCall({ cors: true }, async (request) => {
+  try {
+    if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in required');
+    const data = request.data || {};
+    const validationError = validateUpdatePayload(data);
+    if (validationError) throw new HttpsError('invalid-argument', validationError);
+
+    const eventRef = firestoreDb.collection('events').doc(data.eventId);
+    const snap = await eventRef.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Event not found');
+    const existing = snap.data();
+    if (existing.organizerUid !== request.auth.uid) {
+      throw new HttpsError('permission-denied', 'Only the organizer can edit this event');
+    }
+    if (existing.status !== 'draft') {
+      throw new HttpsError('failed-precondition', 'Only draft events can be edited');
+    }
+
+    const updates = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    if (data.title != null) updates.title = data.title.trim();
+    if (data.startDate != null) {
+      updates.startDate = admin.firestore.Timestamp.fromDate(new Date(data.startDate));
+    }
+    if (data.endDate != null) {
+      updates.endDate = admin.firestore.Timestamp.fromDate(new Date(data.endDate));
+    }
+    if (data.location != null) {
+      updates.location = {
+        address: (data.location.address || '').trim(),
+        city: data.location.city.trim(),
+        state: data.location.state.trim().toUpperCase(),
+      };
+    }
+    if (data.format != null) updates.format = data.format;
+    if (data.maxPlayers != null) updates.maxPlayers = Number(data.maxPlayers);
+    if (data.uscfRated != null) updates.uscfRated = Boolean(data.uscfRated);
+
+    await eventRef.update(updates);
+    return { eventId: data.eventId };
+  } catch (e) {
+    if (!(e instanceof HttpsError)) Sentry.captureException(e);
+    throw e;
+  }
+});
+
+exports.publishEvent = onCall({ cors: true }, async (request) => {
+  try {
+    if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in required');
+    const validationError = validatePublishPayload(request.data);
+    if (validationError) throw new HttpsError('invalid-argument', validationError);
+
+    const { eventId } = request.data;
+    const eventRef = firestoreDb.collection('events').doc(eventId);
+    const snap = await eventRef.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Event not found');
+    const existing = snap.data();
+    if (existing.organizerUid !== request.auth.uid) {
+      throw new HttpsError('permission-denied', 'Only the organizer can publish this event');
+    }
+    if (existing.status !== 'draft') {
+      throw new HttpsError('failed-precondition', 'Only draft events can be published');
+    }
+
+    await eventRef.update({
+      status: 'open',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { eventId };
   } catch (e) {
     if (!(e instanceof HttpsError)) Sentry.captureException(e);
     throw e;
