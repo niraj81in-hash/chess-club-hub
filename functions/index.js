@@ -24,6 +24,8 @@ const db = admin.database();
 const firestoreDb = admin.firestore();
 const { validateCreatePayload, validateUpdatePayload, validatePublishPayload } =
   require('./events-validate.js');
+const { validateRegisterPayload, validateCheckInPayload, validateWithdrawPayload } =
+  require('./registration-validate.js');
 
 const DEFAULT_RATING = 800;
 const PROVISIONAL_GAMES = 20;
@@ -347,6 +349,182 @@ exports.publishEvent = onCall({ cors: true }, async (request) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     return { eventId };
+  } catch (e) {
+    if (!(e instanceof HttpsError)) Sentry.captureException(e);
+    throw e;
+  }
+});
+
+async function sendEmail({ to, subject, html }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  const from = process.env.RESEND_FROM || 'onboarding@resend.dev';
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from, to: [to], subject, html }),
+    });
+    if (!res.ok) {
+      console.error('Resend API error', res.status, await res.text());
+    }
+  } catch (err) {
+    console.error('sendEmail failed', err);
+  }
+}
+
+exports.registerForEvent = onCall({ cors: true }, async (request) => {
+  try {
+    if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in required');
+    const data = request.data || {};
+    const validationError = validateRegisterPayload(data);
+    if (validationError) throw new HttpsError('invalid-argument', validationError);
+
+    const uid = request.auth.uid;
+    const { eventId, playerName, playerEmail } = data;
+    const regId = `${eventId}_${uid}`;
+
+    const eventRef = firestoreDb.collection('events').doc(eventId);
+    const regRef = firestoreDb.collection('registrations').doc(regId);
+
+    const eventSnap = await eventRef.get();
+    if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found');
+    const event = eventSnap.data();
+    if (event.status !== 'open') throw new HttpsError('failed-precondition', 'Event is not open for registration');
+
+    const confirmedSnap = await firestoreDb.collection('registrations')
+      .where('eventId', '==', eventId)
+      .where('status', '==', 'confirmed')
+      .count()
+      .get();
+    const confirmedCount = confirmedSnap.data().count;
+
+    let waitlistPosition = null;
+    let status = 'confirmed';
+    if (confirmedCount >= event.maxPlayers) {
+      status = 'waitlisted';
+      const waitlistSnap = await firestoreDb.collection('registrations')
+        .where('eventId', '==', eventId)
+        .where('status', '==', 'waitlisted')
+        .count()
+        .get();
+      waitlistPosition = waitlistSnap.data().count + 1;
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    await firestoreDb.runTransaction(async (tx) => {
+      const existingSnap = await tx.get(regRef);
+      if (existingSnap.exists) {
+        const existing = existingSnap.data();
+        if (existing.status !== 'withdrawn') {
+          throw new HttpsError('already-exists', 'You are already registered for this event');
+        }
+      }
+      tx.set(regRef, {
+        eventId,
+        playerUid: uid,
+        organizerUid: event.organizerUid,
+        playerName: playerName.trim().slice(0, 50),
+        playerEmail: playerEmail.toLowerCase(),
+        status,
+        waitlistPosition,
+        registeredAt: now,
+        updatedAt: now,
+        checkedInAt: null,
+      });
+    });
+
+    sendEmail({
+      to: playerEmail.toLowerCase(),
+      subject: status === 'confirmed'
+        ? `Registration confirmed: ${event.title}`
+        : `You're on the waitlist: ${event.title}`,
+      html: status === 'confirmed'
+        ? `<p>Hi ${playerName},</p><p>Your registration for <strong>${event.title}</strong> is confirmed.</p>`
+        : `<p>Hi ${playerName},</p><p>You are on the waitlist for <strong>${event.title}</strong> at position ${waitlistPosition}.</p>`,
+    });
+
+    return { status, waitlistPosition };
+  } catch (e) {
+    if (!(e instanceof HttpsError)) Sentry.captureException(e);
+    throw e;
+  }
+});
+
+exports.checkInPlayer = onCall({ cors: true }, async (request) => {
+  try {
+    if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in required');
+    const validationError = validateCheckInPayload(request.data);
+    if (validationError) throw new HttpsError('invalid-argument', validationError);
+
+    const { registrationId } = request.data;
+    const regRef = firestoreDb.collection('registrations').doc(registrationId);
+    const snap = await regRef.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Registration not found');
+    const reg = snap.data();
+    if (reg.organizerUid !== request.auth.uid) {
+      throw new HttpsError('permission-denied', 'Only the organizer can check in players');
+    }
+    if (reg.status === 'waitlisted' || reg.status === 'withdrawn') {
+      throw new HttpsError('failed-precondition', 'Player must be confirmed to check in');
+    }
+
+    await regRef.update({
+      status: 'checked_in',
+      checkedInAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { registrationId };
+  } catch (e) {
+    if (!(e instanceof HttpsError)) Sentry.captureException(e);
+    throw e;
+  }
+});
+
+exports.withdrawRegistration = onCall({ cors: true }, async (request) => {
+  try {
+    if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in required');
+    const validationError = validateWithdrawPayload(request.data);
+    if (validationError) throw new HttpsError('invalid-argument', validationError);
+
+    const { registrationId } = request.data;
+    const regRef = firestoreDb.collection('registrations').doc(registrationId);
+    const snap = await regRef.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Registration not found');
+    const reg = snap.data();
+    if (reg.playerUid !== request.auth.uid) {
+      throw new HttpsError('permission-denied', 'You can only withdraw your own registration');
+    }
+    if (reg.status === 'withdrawn') {
+      throw new HttpsError('failed-precondition', 'Registration is already withdrawn');
+    }
+
+    const wasConfirmed = reg.status === 'confirmed' || reg.status === 'checked_in';
+    await regRef.update({
+      status: 'withdrawn',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    if (wasConfirmed) {
+      const waitlistSnap = await firestoreDb.collection('registrations')
+        .where('eventId', '==', reg.eventId)
+        .where('status', '==', 'waitlisted')
+        .orderBy('waitlistPosition', 'asc')
+        .limit(1)
+        .get();
+      if (!waitlistSnap.empty) {
+        const nextRef = waitlistSnap.docs[0].ref;
+        await nextRef.update({
+          status: 'confirmed',
+          waitlistPosition: null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+    return { registrationId };
   } catch (e) {
     if (!(e instanceof HttpsError)) Sentry.captureException(e);
     throw e;
