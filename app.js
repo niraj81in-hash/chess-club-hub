@@ -113,13 +113,17 @@ window.openRegModal = function (eventId, eventTitle) {
   modal.showModal();
 };
 
+document.getElementById('reg-modal').addEventListener('cancel', () => {
+  window.closeRegModal();
+});
+
 document.getElementById('reg-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('reg-submit-btn');
   const errEl = document.getElementById('reg-form-error');
   errEl.hidden = true;
-  const playerName = document.getElementById('reg-player-name').value;
-  const playerEmail = document.getElementById('reg-player-email').value;
+  const playerName = document.getElementById('reg-player-name').value.trim();
+  const playerEmail = document.getElementById('reg-player-email').value.trim();
   const formErr = validateRegistrationForm({ playerName, playerEmail });
   if (formErr) {
     errEl.textContent = formErr;
@@ -281,7 +285,8 @@ function buildEventCard(ev, isOwner) {
     card.appendChild(actions);
   }
 
-  if (!isOwner && ev.status === 'open') {
+  const currentUid = getAuthUser()?.uid;
+  if (!isOwner && ev.status === 'open' && ev.organizerUid !== currentUid) {
     const actions = document.createElement('div');
     actions.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;';
 
