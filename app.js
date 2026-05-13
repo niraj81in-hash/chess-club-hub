@@ -20,6 +20,7 @@ import { generateRoomCode, createRoom, joinRoom, sendMove, onMove,
 import { escapeHtml, isLinkedAccount } from './js/utils.js';
 import { createEvent, updateEvent, publishEvent,
          getEvents, getMyEvents, formatEventDate, validateEventForm } from './js/events.js';
+import { registerForEvent, getMyRegistration, validateRegistrationForm } from './js/registrations.js';
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -92,6 +93,59 @@ function openEditEventForm(ev) {
 }
 
 window.openCreateEventForm = openCreateEventForm;
+
+window.closeRegModal = function () {
+  const modal = document.getElementById('reg-modal');
+  modal.close();
+  document.getElementById('reg-form').reset();
+  document.getElementById('reg-form-error').hidden = true;
+  document.getElementById('reg-success').hidden = true;
+  document.getElementById('reg-form').hidden = false;
+};
+
+window.openRegModal = function (eventId, eventTitle) {
+  const modal = document.getElementById('reg-modal');
+  document.getElementById('reg-event-name').textContent = eventTitle;
+  modal.dataset.eventId = eventId;
+  document.getElementById('reg-form').hidden = false;
+  document.getElementById('reg-success').hidden = true;
+  document.getElementById('reg-form-error').hidden = true;
+  modal.showModal();
+};
+
+document.getElementById('reg-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('reg-submit-btn');
+  const errEl = document.getElementById('reg-form-error');
+  errEl.hidden = true;
+  const playerName = document.getElementById('reg-player-name').value;
+  const playerEmail = document.getElementById('reg-player-email').value;
+  const formErr = validateRegistrationForm({ playerName, playerEmail });
+  if (formErr) {
+    errEl.textContent = formErr;
+    errEl.hidden = false;
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Registering…';
+  try {
+    const eventId = document.getElementById('reg-modal').dataset.eventId;
+    const result = await registerForEvent({ eventId, playerName, playerEmail });
+    document.getElementById('reg-form').hidden = true;
+    const successMsg = document.getElementById('reg-success-msg');
+    successMsg.textContent = result.status === 'confirmed'
+      ? 'Registration confirmed! Check your email.'
+      : `You are on the waitlist at position ${result.waitlistPosition}. We'll email you if a spot opens.`;
+    document.getElementById('reg-success').hidden = false;
+    await renderEvents();
+  } catch (err) {
+    errEl.textContent = err.message || 'Registration failed. Please try again.';
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Register';
+  }
+});
 
 window.closeEventForm = function() {
   document.getElementById('ev-form-container').style.display = 'none';
@@ -225,6 +279,30 @@ function buildEventCard(ev, isOwner) {
     actions.appendChild(editBtn);
     actions.appendChild(publishBtn);
     card.appendChild(actions);
+  }
+
+  if (!isOwner && ev.status === 'open') {
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;';
+
+    const regBtn = document.createElement('button');
+    regBtn.className = 'btn btn-emerald btn-sm';
+    regBtn.textContent = 'Register';
+    regBtn.addEventListener('click', () => window.openRegModal(ev.id, ev.title));
+    actions.appendChild(regBtn);
+    card.appendChild(actions);
+
+    // Async: update button with user's current registration status
+    getMyRegistration(ev.id).then(reg => {
+      if (!reg || reg.status === 'withdrawn') return;
+      regBtn.disabled = true;
+      const labels = {
+        confirmed: 'Confirmed',
+        waitlisted: `Waitlisted #${reg.waitlistPosition}`,
+        checked_in: 'Checked In',
+      };
+      regBtn.textContent = labels[reg.status] || reg.status;
+    }).catch(() => {});
   }
 
   return card;

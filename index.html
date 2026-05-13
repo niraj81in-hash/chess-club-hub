@@ -561,6 +561,27 @@
 .timer-low { color: var(--red) !important; animation: pulse .6s infinite; }
 </style>
 
+<!-- Registration modal -->
+<dialog id="reg-modal" aria-modal="true" aria-labelledby="reg-modal-title">
+  <form id="reg-form" autocomplete="on">
+    <h2 id="reg-modal-title">Register for Event</h2>
+    <p id="reg-event-name" class="modal-subtitle"></p>
+    <label for="reg-player-name">Your Name</label>
+    <input id="reg-player-name" type="text" required minlength="2" maxlength="50" autocomplete="name" />
+    <label for="reg-player-email">Your Email</label>
+    <input id="reg-player-email" type="email" required autocomplete="email" />
+    <p id="reg-form-error" class="form-error" hidden></p>
+    <div class="modal-actions">
+      <button type="button" onclick="window.closeRegModal()">Cancel</button>
+      <button type="submit" id="reg-submit-btn">Register</button>
+    </div>
+  </form>
+  <div id="reg-success" hidden>
+    <p id="reg-success-msg"></p>
+    <button type="button" onclick="window.closeRegModal()">Close</button>
+  </div>
+</dialog>
+
 <script type="module" src="app.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
