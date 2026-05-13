@@ -53,12 +53,16 @@ export async function withdrawRegistration(registrationId) {
 // Firestore read functions
 
 export async function getRegistrations(eventId) {
+  const { getAuthUser } = await getRelay();
+  const user = getAuthUser();
+  if (!user) return [];
   await initFirestore();
   const { collection, query, where, getDocs, orderBy } =
     await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   const q = query(
     collection(firestore, 'registrations'),
     where('eventId', '==', eventId),
+    where('organizerUid', '==', user.uid),
     orderBy('registeredAt', 'asc')
   );
   const snap = await getDocs(q);
@@ -78,12 +82,16 @@ export async function getMyRegistration(eventId) {
 }
 
 export async function getRegistrationCount(eventId) {
+  const { getAuthUser } = await getRelay();
+  const user = getAuthUser();
+  if (!user) return 0;
   await initFirestore();
   const { collection, query, where, getCountFromServer } =
     await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   const q = query(
     collection(firestore, 'registrations'),
     where('eventId', '==', eventId),
+    where('organizerUid', '==', user.uid),
     where('status', 'in', ['confirmed', 'checked_in'])
   );
   const snap = await getCountFromServer(q);

@@ -355,6 +355,14 @@ exports.publishEvent = onCall({ cors: true }, async (request) => {
   }
 });
 
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 async function sendEmail({ to, subject, html }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return;
@@ -440,14 +448,14 @@ exports.registerForEvent = onCall({ cors: true }, async (request) => {
       });
     });
 
-    sendEmail({
+    await sendEmail({
       to: playerEmail.toLowerCase(),
       subject: status === 'confirmed'
         ? `Registration confirmed: ${event.title}`
         : `You're on the waitlist: ${event.title}`,
       html: status === 'confirmed'
-        ? `<p>Hi ${playerName},</p><p>Your registration for <strong>${event.title}</strong> is confirmed.</p>`
-        : `<p>Hi ${playerName},</p><p>You are on the waitlist for <strong>${event.title}</strong> at position ${waitlistPosition}.</p>`,
+        ? `<p>Hi ${escHtml(playerName)},</p><p>Your registration for <strong>${escHtml(event.title)}</strong> is confirmed.</p>`
+        : `<p>Hi ${escHtml(playerName)},</p><p>You are on the waitlist for <strong>${escHtml(event.title)}</strong> at position ${waitlistPosition}.</p>`,
     });
 
     return { status, waitlistPosition };
@@ -526,10 +534,10 @@ exports.withdrawRegistration = onCall({ cors: true }, async (request) => {
           waitlistPosition: null,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        sendEmail({
+        await sendEmail({
           to: nextData.playerEmail,
           subject: `You're in! Registration confirmed`,
-          html: `<p>Hi ${nextData.playerName},</p><p>A spot has opened up and your registration is now confirmed. See you there!</p>`,
+          html: `<p>Hi ${escHtml(nextData.playerName)},</p><p>A spot has opened up and your registration is now confirmed. See you there!</p>`,
         });
       }
     }
