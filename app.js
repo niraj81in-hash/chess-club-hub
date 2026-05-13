@@ -76,6 +76,7 @@ function openCreateEventForm() {
 }
 
 function openEditEventForm(ev) {
+  document.getElementById('ev-form').reset();
   document.getElementById('ev-form-title').textContent = 'Edit Event';
   document.getElementById('ev-title').value = ev.title;
   document.getElementById('ev-start').value = ev.startDate.slice(0, 10);
@@ -261,10 +262,12 @@ async function renderEvents() {
     }
   } catch (e) {
     listEl.innerHTML = '';
+    myListEl.innerHTML = '';
     const errMsg = document.createElement('p');
     errMsg.style.cssText = 'color:var(--text-dim);font-size:.9rem;';
     errMsg.textContent = 'Error loading events. Check your connection.';
     listEl.appendChild(errMsg);
+    myListEl.appendChild(errMsg.cloneNode(true));
     console.error('renderEvents error:', e);
   }
 }
