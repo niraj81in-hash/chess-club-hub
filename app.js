@@ -18,6 +18,8 @@ import { generateRoomCode, createRoom, joinRoom, sendMove, onMove,
          getCurrentUid, fetchClubRatings,
          sendMagicLink, completeMagicLinkSignIn, getAuthUser } from './multiplayer/relay.js';
 import { escapeHtml, isLinkedAccount } from './js/utils.js';
+import { createEvent, updateEvent, publishEvent,
+         getEvents, getMyEvents, formatEventDate, validateEventForm } from './js/events.js';
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -63,6 +65,209 @@ window.dismissAuth = function() {
   document.getElementById('auth-modal').style.display = 'none';
   sessionStorage.setItem('authDismissed', '1');
 };
+
+// ── Events UI ─────────────────────────────────────────────────
+
+function openCreateEventForm() {
+  document.getElementById('ev-form-title').textContent = 'New Event';
+  document.getElementById('ev-form').reset();
+  delete document.getElementById('ev-form').dataset.editingId;
+  document.getElementById('ev-form-container').style.display = '';
+}
+
+function openEditEventForm(ev) {
+  document.getElementById('ev-form-title').textContent = 'Edit Event';
+  document.getElementById('ev-title').value = ev.title;
+  document.getElementById('ev-start').value = ev.startDate.slice(0, 10);
+  document.getElementById('ev-end').value = ev.endDate.slice(0, 10);
+  document.getElementById('ev-address').value = ev.location?.address || '';
+  document.getElementById('ev-city').value = ev.location?.city || '';
+  document.getElementById('ev-state').value = ev.location?.state || '';
+  document.getElementById('ev-format').value = ev.format;
+  document.getElementById('ev-max-players').value = ev.maxPlayers;
+  document.getElementById('ev-uscf-rated').checked = Boolean(ev.uscfRated);
+  document.getElementById('ev-form').dataset.editingId = ev.id;
+  document.getElementById('ev-form-container').style.display = '';
+}
+
+window.openCreateEventForm = openCreateEventForm;
+
+window.closeEventForm = function() {
+  document.getElementById('ev-form-container').style.display = 'none';
+};
+
+window.switchEventsTab = function(tab) {
+  const isUpcoming = tab === 'upcoming';
+  document.getElementById('ev-panel-upcoming').style.display = isUpcoming ? '' : 'none';
+  document.getElementById('ev-panel-mine').style.display = isUpcoming ? 'none' : '';
+  document.getElementById('ev-tab-upcoming').style.borderBottom =
+    isUpcoming ? '2px solid var(--gold)' : '';
+  document.getElementById('ev-tab-mine').style.borderBottom =
+    isUpcoming ? '' : '2px solid var(--gold)';
+};
+
+window.submitEventForm = async function() {
+  const startVal = document.getElementById('ev-start').value;
+  const endVal = document.getElementById('ev-end').value;
+  const formPayload = {
+    title: document.getElementById('ev-title').value,
+    startDate: startVal,
+    endDate: endVal,
+    address: document.getElementById('ev-address').value,
+    city: document.getElementById('ev-city').value,
+    state: document.getElementById('ev-state').value,
+    format: document.getElementById('ev-format').value,
+    maxPlayers: document.getElementById('ev-max-players').value,
+    uscfRated: document.getElementById('ev-uscf-rated').checked,
+  };
+  const error = validateEventForm(formPayload);
+  if (error) return toast(error);
+
+  const cloudPayload = {
+    title: formPayload.title,
+    startDate: startVal + 'T00:00:00',
+    endDate: endVal + 'T23:59:59',
+    location: {
+      address: formPayload.address,
+      city: formPayload.city,
+      state: formPayload.state,
+    },
+    format: formPayload.format,
+    maxPlayers: parseInt(formPayload.maxPlayers, 10),
+    uscfRated: formPayload.uscfRated,
+  };
+
+  const editingId = document.getElementById('ev-form').dataset.editingId;
+  try {
+    if (editingId) {
+      await updateEvent({ eventId: editingId, ...cloudPayload });
+      toast('Event updated ✅');
+    } else {
+      await createEvent(cloudPayload);
+      toast('Event saved as draft ✅');
+    }
+    window.closeEventForm();
+    await renderEvents();
+  } catch (e) {
+    toast(e.message || 'Could not save event');
+    console.error(e);
+  }
+};
+
+window.publishEventFromUI = async function(eventId) {
+  if (!confirm('Publish this event? It will be visible to all players.')) return;
+  try {
+    await publishEvent(eventId);
+    toast('Event published! 🎉');
+    await renderEvents();
+  } catch (e) {
+    toast(e.message || 'Could not publish event');
+    console.error(e);
+  }
+};
+
+function buildEventCard(ev, isOwner) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.marginBottom = '.75rem';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;';
+
+  const title = document.createElement('h3');
+  title.style.margin = '0';
+  title.textContent = ev.title;
+
+  const badge = document.createElement('span');
+  badge.style.cssText = 'font-size:.75rem;padding:.2rem .5rem;border-radius:8px;background:var(--surface2);border:1px solid var(--border);text-transform:capitalize;';
+  badge.textContent = ev.status;
+
+  header.appendChild(title);
+  header.appendChild(badge);
+  card.appendChild(header);
+
+  const meta = document.createElement('div');
+  meta.style.cssText = 'font-size:.85rem;color:var(--text-dim);display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem;';
+
+  const dateSpan = document.createElement('span');
+  const startStr = formatEventDate(ev.startDate);
+  const endStr = formatEventDate(ev.endDate);
+  dateSpan.textContent = startStr === endStr
+    ? `📅 ${startStr}`
+    : `📅 ${startStr} – ${endStr}`;
+
+  const locSpan = document.createElement('span');
+  locSpan.textContent = `📍 ${ev.location?.city || ''}${ev.location?.state ? ', ' + ev.location.state : ''}`;
+
+  const fmtSpan = document.createElement('span');
+  fmtSpan.textContent = `🏆 ${ev.format.replace(/_/g, ' ')} · ${ev.maxPlayers} players`;
+
+  meta.appendChild(dateSpan);
+  meta.appendChild(locSpan);
+  meta.appendChild(fmtSpan);
+  card.appendChild(meta);
+
+  if (isOwner && ev.status === 'draft') {
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-outline btn-sm';
+    editBtn.textContent = 'Edit';
+    editBtn.onclick = () => openEditEventForm(ev);
+
+    const publishBtn = document.createElement('button');
+    publishBtn.className = 'btn btn-emerald btn-sm';
+    publishBtn.textContent = 'Publish';
+    publishBtn.onclick = () => window.publishEventFromUI(ev.id);
+
+    actions.appendChild(editBtn);
+    actions.appendChild(publishBtn);
+    card.appendChild(actions);
+  }
+
+  return card;
+}
+
+async function renderEvents() {
+  const listEl = document.getElementById('events-list');
+  const myListEl = document.getElementById('my-events-list');
+  if (!listEl || !myListEl) return;
+
+  listEl.innerHTML = '<p style="color:var(--text-dim);font-size:.9rem;">Loading…</p>';
+  myListEl.innerHTML = '<p style="color:var(--text-dim);font-size:.9rem;">Loading…</p>';
+
+  try {
+    const [upcoming, mine] = await Promise.all([getEvents('open'), getMyEvents()]);
+
+    listEl.innerHTML = '';
+    if (upcoming.length === 0) {
+      const msg = document.createElement('p');
+      msg.style.cssText = 'color:var(--text-dim);font-size:.9rem;';
+      msg.textContent = 'No upcoming events. Check back soon!';
+      listEl.appendChild(msg);
+    } else {
+      upcoming.forEach(ev => listEl.appendChild(buildEventCard(ev, false)));
+    }
+
+    myListEl.innerHTML = '';
+    if (mine.length === 0) {
+      const msg = document.createElement('p');
+      msg.style.cssText = 'color:var(--text-dim);font-size:.9rem;';
+      msg.textContent = 'No events yet. Click "+ Create Event" to add one.';
+      myListEl.appendChild(msg);
+    } else {
+      mine.forEach(ev => myListEl.appendChild(buildEventCard(ev, true)));
+    }
+  } catch (e) {
+    listEl.innerHTML = '';
+    const errMsg = document.createElement('p');
+    errMsg.style.cssText = 'color:var(--text-dim);font-size:.9rem;';
+    errMsg.textContent = 'Error loading events. Check your connection.';
+    listEl.appendChild(errMsg);
+    console.error('renderEvents error:', e);
+  }
+}
 
 // ── Init UI ───────────────────────────────────────────────────
 
@@ -128,6 +333,7 @@ const PAGE_TITLES = {
   review:      'Game Review — Chess Club Hub',
   tournament:  'Tournaments — Chess Club Hub',
   leaderboard: 'Leaderboard — Chess Club Hub',
+  events:      'Events — Chess Club Hub',
 };
 
 window.nav = async function(page) {
@@ -140,6 +346,7 @@ window.nav = async function(page) {
   if (page === 'review')      await renderReviewList();
   if (page === 'tournament')  await renderTournaments();
   if (page === 'home')        await renderHome();
+  if (page === 'events')      await renderEvents();
 };
 
 // ── Profile ───────────────────────────────────────────────────
