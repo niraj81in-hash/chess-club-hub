@@ -16,6 +16,7 @@ import { generateRoomCode, createRoom, joinRoom, sendMove, onMove,
          onOpponentJoin, sendChat, ensureAnonymousAuth, setActiveClub,
          cloudCreateClub, cloudJoinClub, cloudRecordOnlineGameResult, leaveRoomChannel,
          getCurrentUid, fetchClubRatings } from './multiplayer/relay.js';
+import { escapeHtml } from './js/utils.js';
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -68,6 +69,14 @@ async function initUI() {
   updatePlayerFields();
   await loadProfile();
   await renderHome();
+
+  try {
+    const { refreshIcons } = await import('./js/ui/icons.js');
+    globalThis.refreshLucideIcons = refreshIcons;
+    await refreshIcons();
+  } catch (e) {
+    console.warn('Lucide icons unavailable', e);
+  }
 }
 
 // ── Navigation ────────────────────────────────────────────────
@@ -708,10 +717,17 @@ window.sendChatMsg = function() {
   input.value='';
 };
 
-function appendChat(sender,text) {
-  const box=document.getElementById('chat-messages');
-  box.innerHTML+=`<div class="chat-msg"><span class="sender">${sender}:</span> ${text}</div>`;
-  box.scrollTop=box.scrollHeight;
+function appendChat(sender, text) {
+  const box = document.getElementById('chat-messages');
+  const msg = document.createElement('div');
+  msg.className = 'chat-msg';
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'sender';
+  nameSpan.textContent = sender + ':';
+  msg.appendChild(nameSpan);
+  msg.append(' ' + text);
+  box.appendChild(msg);
+  box.scrollTop = box.scrollHeight;
 }
 
 // ── Review ────────────────────────────────────────────────────
@@ -936,10 +952,6 @@ async function renderClubEloBoard() {
     console.error(e);
     body.innerHTML = '<tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:1rem;">Could not load club ratings (rules / auth).</td></tr>';
   }
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Leaderboard ───────────────────────────────────────────────

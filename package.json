@@ -1,0 +1,16 @@
+{
+  "name": "chess-club-hub",
+  "private": true,
+  "description": "Static chess app; build validates Cloud Functions and required files",
+  "scripts": {
+    "build": "npm install --prefix functions && node --check functions/index.js && node -e \"const fs=require('fs');const p=['index.html','app.js','style.css','css/tokens.css','css/primitives.css','config.js'];for(const f of p){if(!fs.existsSync(f)){console.error('Missing',f);process.exit(1);}}console.log('static tree OK');\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.6"
+  },
+  "vitest": {
+    "environment": "node"
+  }
+}
