@@ -71,4 +71,12 @@ describe('validateWithdrawPayload', () => {
   it('requires registrationId', () => {
     expect(validateWithdrawPayload({})).toMatch(/registrationId/i);
   });
+
+  it('requires registrationId to be non-empty', () => {
+    expect(validateWithdrawPayload({ registrationId: '' })).toMatch(/registrationId/i);
+  });
+
+  it('requires registrationId to be a string', () => {
+    expect(validateWithdrawPayload({ registrationId: 42 })).toMatch(/registrationId/i);
+  });
 });
