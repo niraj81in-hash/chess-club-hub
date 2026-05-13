@@ -21,6 +21,7 @@ const STATIC = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/js/events.js',
+  '/js/registrations.js',
   '/manifest.webmanifest',
 ];
 
