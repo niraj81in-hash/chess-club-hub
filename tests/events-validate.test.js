@@ -50,6 +50,9 @@ describe('validateCreatePayload', () => {
       expect(validateCreatePayload({ ...BASE_CREATE, format: fmt })).toBeNull();
     });
   });
+  it('returns error for float maxPlayers', () => {
+    expect(validateCreatePayload({ ...BASE_CREATE, maxPlayers: 3.5 })).toMatch(/players/i);
+  });
 });
 
 describe('validateUpdatePayload', () => {
@@ -74,6 +77,12 @@ describe('validateUpdatePayload', () => {
       startDate: '2026-06-01T09:00:00',
       endDate:   '2026-05-31T09:00:00',
     })).toMatch(/date/i);
+  });
+  it('returns error for non-string title', () => {
+    expect(validateUpdatePayload({ eventId: 'abc123', title: 123 })).toMatch(/title/i);
+  });
+  it('returns error for whitespace-only title update', () => {
+    expect(validateUpdatePayload({ eventId: 'abc123', title: '   ' })).toMatch(/title/i);
   });
 });
 

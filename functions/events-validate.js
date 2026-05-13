@@ -28,6 +28,7 @@ function validateCreatePayload(data) {
 function validateUpdatePayload(data) {
   if (!data?.eventId || typeof data.eventId !== 'string') return 'eventId is required';
   if (data.title != null) {
+    if (typeof data.title !== 'string') return 'Title must be a string';
     const title = data.title.trim();
     if (title.length < 2 || title.length > 80) return 'Title must be 2–80 characters';
   }
@@ -48,7 +49,7 @@ function validateUpdatePayload(data) {
   if (data.maxPlayers != null) {
     const mp = Number(data.maxPlayers);
     if (!Number.isInteger(mp) || mp < 4 || mp > 256) {
-      return 'maxPlayers must be between 4 and 256';
+      return 'maxPlayers must be an integer between 4 and 256';
     }
   }
   return null;
