@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://chess-club-hub-4cd54.web.app/sitemap.xml

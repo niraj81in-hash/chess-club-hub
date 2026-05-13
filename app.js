@@ -85,11 +85,20 @@ document.querySelectorAll('.nav-btn[data-page]').forEach(btn => {
   btn.addEventListener('click', () => { void nav(btn.dataset.page); });
 });
 
+const PAGE_TITLES = {
+  home:        'Chess Club Hub — Home',
+  play:        'Play Chess — Chess Club Hub',
+  review:      'Game Review — Chess Club Hub',
+  tournament:  'Tournaments — Chess Club Hub',
+  leaderboard: 'Leaderboard — Chess Club Hub',
+};
+
 window.nav = async function(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-btn[data-page="${page}"]`).classList.add('active');
+  document.title = PAGE_TITLES[page] || 'Chess Club Hub';
   if (page === 'leaderboard') { await renderLeaderboard(); await renderEloLeaderboard(); await renderClubEloBoard(); }
   if (page === 'review')      await renderReviewList();
   if (page === 'tournament')  await renderTournaments();
