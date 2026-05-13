@@ -144,6 +144,9 @@ window.openCheckinModal = async function (eventId, eventTitle) {
     return;
   }
 
+  // Stale-data race guard: if modal was reopened for a different event, discard results
+  if (modal.dataset.eventId !== eventId) return;
+
   const confirmed = registrations.filter(r => r.status === 'confirmed' || r.status === 'checked_in');
   const waitlisted = registrations.filter(r => r.status === 'waitlisted');
   countLabel.textContent = `${confirmed.length} confirmed · ${waitlisted.length} waitlisted`;
@@ -155,7 +158,9 @@ window.openCheckinModal = async function (eventId, eventTitle) {
     const a = document.createElement('a');
     a.href = url;
     a.download = `registrations-${eventId}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
@@ -179,7 +184,7 @@ window.openCheckinModal = async function (eventId, eventTitle) {
 
     const statusEl = document.createElement('span');
     statusEl.className = `checkin-status checkin-status--${reg.status}`;
-    statusEl.textContent = reg.status.replace('_', ' ');
+    statusEl.textContent = reg.status.replace(/_/g, ' ');
 
     row.appendChild(nameEl);
     row.appendChild(statusEl);
@@ -398,7 +403,7 @@ function buildEventCard(ev, isOwner) {
     import('./js/registrations.js').then(({ getRegistrationCount }) => {
       return getRegistrationCount(ev.id);
     }).then(count => {
-      countBadge.textContent = `${count} / ${ev.maxPlayers} registered`;
+      countBadge.textContent = `${count} / ${ev.maxPlayers ?? '?'} registered`;
     }).catch(() => {
       countBadge.textContent = '';
     });
