@@ -15,8 +15,9 @@ import { createTournament, recordResult, getBracketSummary } from './tournament/
 import { generateRoomCode, createRoom, joinRoom, sendMove, onMove,
          onOpponentJoin, sendChat, ensureAnonymousAuth, setActiveClub,
          cloudCreateClub, cloudJoinClub, cloudRecordOnlineGameResult, leaveRoomChannel,
-         getCurrentUid, fetchClubRatings } from './multiplayer/relay.js';
-import { escapeHtml } from './js/utils.js';
+         getCurrentUid, fetchClubRatings,
+         sendMagicLink, completeMagicLinkSignIn, getAuthUser } from './multiplayer/relay.js';
+import { escapeHtml, isLinkedAccount } from './js/utils.js';
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -43,11 +44,47 @@ let reviewIdx  = 0;
 /** Opponent Firebase uid (online games) for server ELO */
 let opponentUid = null;
 
+// ── Auth modal ────────────────────────────────────────────────
+
+window.sendAuthLink = async function() {
+  const email = document.getElementById('auth-email').value.trim();
+  if (!email || !email.includes('@')) return toast('Enter a valid email address');
+  try {
+    await sendMagicLink(email);
+    toast('Check your email — sign-in link sent! ✉️');
+    document.getElementById('auth-modal').style.display = 'none';
+  } catch (e) {
+    toast(e.message || 'Could not send sign-in link');
+    console.error(e);
+  }
+};
+
+window.dismissAuth = function() {
+  document.getElementById('auth-modal').style.display = 'none';
+  sessionStorage.setItem('authDismissed', '1');
+};
+
 // ── Init UI ───────────────────────────────────────────────────
 
 async function initUI() {
   await initStorage();
   try { await ensureAnonymousAuth(); } catch (e) { console.warn('Auth', e); }
+
+  // Complete magic link sign-in if user is returning from clicking their email link
+  try {
+    const linkedUser = await completeMagicLinkSignIn();
+    if (linkedUser) toast(`Signed in as ${linkedUser.email} ✅`);
+  } catch (e) {
+    console.warn('Magic link completion failed', e);
+  }
+
+  // Nudge anonymous users to sign in after 30 seconds (once per session)
+  if (!isLinkedAccount(getAuthUser()) && !sessionStorage.getItem('authDismissed')) {
+    setTimeout(() => {
+      const modal = document.getElementById('auth-modal');
+      if (modal && !isLinkedAccount(getAuthUser())) modal.style.display = 'flex';
+    }, 30_000);
+  }
 
   // Populate time control selects
   const tcHTML = TIME_CONTROLS.map((tc, i) =>

@@ -62,6 +62,44 @@ export async function ensureAnonymousAuth() {
   return auth.currentUser;
 }
 
+export async function sendMagicLink(email) {
+  await initFirebase();
+  await ensureAnonymousAuth();
+  const { sendSignInLinkToEmail } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+  const actionCodeSettings = {
+    url: window.location.origin + '/',
+    handleCodeInApp: true,
+  };
+  await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+  localStorage.setItem('emailForSignIn', email);
+}
+
+export async function completeMagicLinkSignIn() {
+  await initFirebase();
+  const { isSignInWithEmailLink, signInWithEmailLink, linkWithCredential, EmailAuthProvider } =
+    await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+  if (!isSignInWithEmailLink(auth, window.location.href)) return null;
+  const email = localStorage.getItem('emailForSignIn') ||
+    window.prompt('Please confirm your email to complete sign-in:');
+  if (!email) return null;
+  try {
+    if (auth.currentUser?.isAnonymous) {
+      const credential = EmailAuthProvider.credentialWithLink(email, window.location.href);
+      await linkWithCredential(auth.currentUser, credential);
+    } else {
+      await signInWithEmailLink(auth, email, window.location.href);
+    }
+  } finally {
+    localStorage.removeItem('emailForSignIn');
+    history.replaceState(null, '', window.location.pathname);
+  }
+  return auth.currentUser;
+}
+
+export function getAuthUser() {
+  return auth ? auth.currentUser : null;
+}
+
 export function getCurrentUid() {
   return auth?.currentUser?.uid || null;
 }

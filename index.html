@@ -56,6 +56,26 @@
   </div>
 </nav>
 
+<!-- ── Auth Modal ─────────────────────────────────────────────── -->
+<div id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;">
+  <div class="card" style="max-width:380px;width:90%;text-align:center;">
+    <h3 id="auth-modal-title" style="color:var(--gold);margin-bottom:.5rem;">Save your progress ♟️</h3>
+    <p style="font-size:.85rem;color:var(--text-dim);margin-bottom:1rem;">
+      We'll email you a sign-in link — no password needed.<br/>
+      Your games, ratings, and club membership transfer automatically.
+    </p>
+    <div class="field">
+      <label for="auth-email">Email address</label>
+      <input type="email" id="auth-email" placeholder="you@school.edu" autocomplete="email" />
+    </div>
+    <button class="btn btn-gold" onclick="sendAuthLink()">Send Sign-in Link</button>
+    <p style="margin-top:.75rem;">
+      <button class="btn btn-outline btn-sm" onclick="dismissAuth()">Skip — continue as guest</button>
+    </p>
+  </div>
+</div>
+
 <!-- ── Home ──────────────────────────────────────────────────── -->
 <section class="page active" id="page-home">
   <h1 class="page-title">Welcome to Chess Club Hub 👑</h1>
