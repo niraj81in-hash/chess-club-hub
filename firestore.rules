@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /events/{eventId} {
+      // Authenticated users can read open/in-progress/complete events,
+      // or their own draft events.
+      allow read: if request.auth != null && (
+        resource.data.status == 'open' ||
+        resource.data.status == 'in_progress' ||
+        resource.data.status == 'complete' ||
+        resource.data.organizerUid == request.auth.uid
+      );
+      // All writes go through Cloud Functions (Admin SDK bypasses rules).
+      allow write: if false;
+    }
+  }
+}
