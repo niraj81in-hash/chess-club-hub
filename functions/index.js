@@ -395,6 +395,9 @@ exports.registerForEvent = onCall({ cors: true }, async (request) => {
     const event = eventSnap.data();
     if (event.status !== 'open') throw new HttpsError('failed-precondition', 'Event is not open for registration');
 
+    // Count is read outside the transaction (Firestore count queries aren't available
+    // inside transactions). maxPlayers is therefore a soft cap under concurrent load —
+    // two simultaneous registrations near the limit may both land as 'confirmed'.
     const confirmedSnap = await firestoreDb.collection('registrations')
       .where('eventId', '==', eventId)
       .where('status', '==', 'confirmed')
@@ -517,10 +520,16 @@ exports.withdrawRegistration = onCall({ cors: true }, async (request) => {
         .get();
       if (!waitlistSnap.empty) {
         const nextRef = waitlistSnap.docs[0].ref;
+        const nextData = waitlistSnap.docs[0].data();
         await nextRef.update({
           status: 'confirmed',
           waitlistPosition: null,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        sendEmail({
+          to: nextData.playerEmail,
+          subject: `You're in! Registration confirmed`,
+          html: `<p>Hi ${nextData.playerName},</p><p>A spot has opened up and your registration is now confirmed. See you there!</p>`,
         });
       }
     }
