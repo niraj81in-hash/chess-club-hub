@@ -22,7 +22,7 @@
   --check-sq:    rgba(239,68,68,0.6);
   --font:        'Inter', system-ui, sans-serif;
   --radius:      10px;
-  --sq:          clamp(44px, 10vmin, 72px);
+  --sq:          clamp(56px, 11vmin, 96px);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

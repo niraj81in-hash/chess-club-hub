@@ -294,6 +294,35 @@ export function makeMove(state, from, to, promotion = 'Q') {
   return newState;
 }
 
+// ── FEN serialiser ───────────────────────────────────────────
+
+export function toFen(state) {
+  const pieceMap = {
+    wK:'K', wQ:'Q', wR:'R', wB:'B', wN:'N', wP:'P',
+    bK:'k', bQ:'q', bR:'r', bB:'b', bN:'n', bP:'p'
+  };
+  let placement = '';
+  for (let r = 0; r < 8; r++) {
+    let empty = 0;
+    for (let c = 0; c < 8; c++) {
+      const p = state.board[r][c];
+      if (p) { if (empty) { placement += empty; empty = 0; } placement += pieceMap[p]; }
+      else empty++;
+    }
+    if (empty) placement += empty;
+    if (r < 7) placement += '/';
+  }
+  let castling = '';
+  if (state.castling.wK) castling += 'K';
+  if (state.castling.wQ) castling += 'Q';
+  if (state.castling.bK) castling += 'k';
+  if (state.castling.bQ) castling += 'q';
+  if (!castling) castling = '-';
+  const files = 'abcdefgh';
+  const ep = state.enPassant ? files[state.enPassant[1]] + (8 - state.enPassant[0]) : '-';
+  return `${placement} ${state.turn} ${castling} ${ep} ${state.halfMove} ${state.fullMove}`;
+}
+
 // ── Simple SAN notation helper ────────────────────────────────
 
 export function toSAN(board, from, to, promotion) {

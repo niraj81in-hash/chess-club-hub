@@ -3,7 +3,7 @@
 // Adds: Chess Clock, Computer Opponent, ELO Ratings
 // ============================================================
 
-import { initGameState, legalMoves, makeMove, color, type, PIECES } from './chess/engine.js';
+import { initGameState, legalMoves, makeMove, color, type, PIECES, toFen } from './chess/engine.js';
 import { exportPGN, downloadPGN }    from './chess/pgn.js';
 import { ChessClock, TIME_CONTROLS } from './chess/clock.js';
 import { DIFFICULTY_LEVELS, getBestMoveAsync } from './chess/ai.js';
@@ -620,8 +620,62 @@ window.loadReview = function(id) {
 window.backToList = function() {
   document.getElementById('review-list').style.display='block';
   document.getElementById('review-board-view').style.display='none';
+  engineController?.abort();
   renderReviewList();
 };
+
+// ── Lichess cloud engine eval ─────────────────────────────────
+
+let engineController = null;
+
+async function fetchEngineEval(fen) {
+  const evalEl   = document.getElementById('engine-eval');
+  const linesEl  = document.getElementById('engine-lines');
+  const depthEl  = document.getElementById('engine-depth');
+  const statusEl = document.getElementById('engine-status');
+
+  engineController?.abort();
+  engineController = new AbortController();
+
+  evalEl.textContent  = '…';
+  evalEl.style.color  = 'var(--text-dim)';
+  linesEl.innerHTML   = '';
+  depthEl.textContent = '';
+  statusEl.textContent = '';
+
+  try {
+    const res = await fetch(
+      `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=3`,
+      { signal: engineController.signal }
+    );
+    if (!res.ok) { statusEl.textContent = 'Position not in cloud cache'; evalEl.textContent = '—'; return; }
+    const data = await res.json();
+    depthEl.textContent = `depth ${data.depth}`;
+    const pvs = data.pvs || [];
+    if (!pvs.length) { evalEl.textContent = '—'; return; }
+
+    const top = pvs[0];
+    if (top.mate != null) {
+      const m = top.mate;
+      evalEl.textContent = m > 0 ? `M${m}` : `-M${Math.abs(m)}`;
+      evalEl.style.color = m > 0 ? 'var(--emerald)' : 'var(--red)';
+    } else {
+      const cp = top.cp / 100;
+      evalEl.textContent = (cp >= 0 ? '+' : '') + cp.toFixed(2);
+      evalEl.style.color = cp > 0.3 ? 'var(--emerald)' : cp < -0.3 ? 'var(--red)' : 'var(--text)';
+    }
+
+    linesEl.innerHTML = pvs.map(pv => {
+      const score = pv.mate != null
+        ? (pv.mate > 0 ? `M${pv.mate}` : `-M${Math.abs(pv.mate)}`)
+        : ((pv.cp >= 0 ? '+' : '') + (pv.cp / 100).toFixed(2));
+      const moves = pv.moves.split(' ').slice(0, 6).join(' ');
+      return `<div><span style="color:var(--gold);display:inline-block;min-width:3.5rem;">${score}</span>${moves}</div>`;
+    }).join('');
+  } catch (e) {
+    if (e.name !== 'AbortError') { statusEl.textContent = 'Engine unavailable'; evalEl.textContent = '—'; }
+  }
+}
 
 window.reviewNav = function(dir) {
   if(!reviewGame)return;
@@ -644,6 +698,7 @@ function renderReviewBoard() {
     board.appendChild(sq);
   }
   document.getElementById('annotation-text').value=(reviewGame.annotations||{})[reviewIdx]||'';
+  fetchEngineEval(toFen(state));
 }
 
 function renderReviewMoveList() {

@@ -272,6 +272,15 @@
           <div class="move-list" id="review-move-list" style="max-height:300px;"></div>
         </div>
         <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;">
+            <h3>Engine</h3>
+            <span id="engine-depth" style="font-size:.75rem;color:var(--text-dim);"></span>
+          </div>
+          <div id="engine-eval" style="font-family:monospace;font-size:1.4rem;font-weight:700;color:var(--text-dim);">—</div>
+          <div id="engine-lines" style="font-size:.78rem;color:var(--text-dim);line-height:1.7;margin-top:.4rem;font-family:monospace;"></div>
+          <div id="engine-status" style="font-size:.72rem;color:var(--text-dim);margin-top:.25rem;"></div>
+        </div>
+        <div class="card">
           <h3 style="margin-bottom:.5rem;">Annotation</h3>
           <textarea id="annotation-text" rows="3" placeholder="Add your thoughts..." style="resize:vertical;"></textarea>
           <button class="btn btn-surface btn-sm" style="margin-top:.5rem;" onclick="saveAnnotation()">Save Note</button>
