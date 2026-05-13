@@ -6,6 +6,7 @@
   },
   "main": "index.js",
   "dependencies": {
+    "@sentry/node": "^8.0.0",
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^5.1.1"
   }

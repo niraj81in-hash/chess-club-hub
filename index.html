@@ -41,6 +41,30 @@
   <link rel="stylesheet" href="css/tokens.css" />
   <link rel="stylesheet" href="css/primitives.css" />
   <link rel="stylesheet" href="style.css" />
+
+  <!--
+    Sentry error monitoring — browser
+    ⚠️ USER ACTION REQUIRED:
+    1. Create a project at https://sentry.io (Browser JavaScript)
+    2. Replace the empty string below with your DSN
+    3. Replace the empty string in functions/index.js with your Node.js project DSN
+  -->
+  <script
+    src="https://browser.sentry-cdn.com/8.0.0/bundle.tracing.min.js"
+    crossorigin="anonymous"
+  ></script>
+  <script>
+    (function () {
+      var dsn = ''; // ⚠️ Replace with your Sentry Browser DSN from sentry.io
+      if (dsn && dsn.indexOf('sentry.io') !== -1) {
+        Sentry.init({
+          dsn: dsn,
+          environment: location.hostname === 'localhost' ? 'development' : 'production',
+          tracesSampleRate: 0.1,
+        });
+      }
+    })();
+  </script>
 </head>
 <body>
 

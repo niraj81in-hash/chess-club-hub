@@ -1,0 +1,39 @@
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches: ["main"]
+
+# ⚠️ USER ACTION REQUIRED:
+# Add a GitHub secret named FIREBASE_SERVICE_ACCOUNT with the content of
+# a Firebase service account JSON key:
+#   Firebase Console → Project settings → Service accounts → Generate new private key
+#   GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Validate static tree
+        run: npm run build
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
+          channelId: live
+          projectId: chess-club-hub-4cd54
