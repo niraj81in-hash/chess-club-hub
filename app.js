@@ -117,6 +117,99 @@ document.getElementById('reg-modal').addEventListener('cancel', () => {
   window.closeRegModal();
 });
 
+window.closeCheckinModal = function () {
+  document.getElementById('checkin-modal').close();
+};
+
+document.getElementById('checkin-modal').addEventListener('cancel', () => {
+  window.closeCheckinModal();
+});
+
+window.openCheckinModal = async function (eventId, eventTitle) {
+  const modal = document.getElementById('checkin-modal');
+  document.getElementById('checkin-event-name').textContent = eventTitle;
+  modal.dataset.eventId = eventId;
+  const listEl = document.getElementById('checkin-list');
+  const countLabel = document.getElementById('checkin-count-label');
+  listEl.textContent = 'Loading…';
+  countLabel.textContent = '';
+  modal.showModal();
+
+  const { getRegistrations, checkInPlayer, generateCSV } = await import('./js/registrations.js');
+  let registrations = [];
+  try {
+    registrations = await getRegistrations(eventId);
+  } catch (err) {
+    listEl.textContent = 'Failed to load registrations.';
+    return;
+  }
+
+  const confirmed = registrations.filter(r => r.status === 'confirmed' || r.status === 'checked_in');
+  const waitlisted = registrations.filter(r => r.status === 'waitlisted');
+  countLabel.textContent = `${confirmed.length} confirmed · ${waitlisted.length} waitlisted`;
+
+  document.getElementById('checkin-csv-btn').onclick = () => {
+    const csv = generateCSV(registrations);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `registrations-${eventId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  listEl.textContent = '';
+  if (registrations.length === 0) {
+    const empty = document.createElement('p');
+    empty.style.color = 'var(--text-dim)';
+    empty.textContent = 'No registrations yet.';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  function renderCheckinRow(reg) {
+    const row = document.createElement('div');
+    row.className = 'checkin-row';
+    row.setAttribute('role', 'listitem');
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'checkin-name';
+    nameEl.textContent = reg.playerName;
+
+    const statusEl = document.createElement('span');
+    statusEl.className = `checkin-status checkin-status--${reg.status}`;
+    statusEl.textContent = reg.status.replace('_', ' ');
+
+    row.appendChild(nameEl);
+    row.appendChild(statusEl);
+
+    if (reg.status === 'confirmed') {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = 'Check In';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Checking in…';
+        try {
+          await checkInPlayer(reg.id);
+          statusEl.textContent = 'checked in';
+          statusEl.className = 'checkin-status checkin-status--checked_in';
+          btn.remove();
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = 'Check In';
+          toast(err.message || 'Check-in failed.');
+        }
+      });
+      row.appendChild(btn);
+    }
+    return row;
+  }
+
+  registrations.forEach(reg => listEl.appendChild(renderCheckinRow(reg)));
+};
+
 document.getElementById('reg-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('reg-submit-btn');
@@ -283,6 +376,32 @@ function buildEventCard(ev, isOwner) {
     actions.appendChild(editBtn);
     actions.appendChild(publishBtn);
     card.appendChild(actions);
+  }
+
+  if (isOwner && (ev.status === 'open' || ev.status === 'in_progress')) {
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;';
+
+    const countBadge = document.createElement('span');
+    countBadge.style.cssText = 'font-size:.8rem;color:var(--text-dim);';
+    countBadge.textContent = '…';
+    actions.appendChild(countBadge);
+
+    const manageBtn = document.createElement('button');
+    manageBtn.className = 'btn btn-outline btn-sm';
+    manageBtn.textContent = 'Manage';
+    manageBtn.addEventListener('click', () => window.openCheckinModal(ev.id, ev.title));
+    actions.appendChild(manageBtn);
+
+    card.appendChild(actions);
+
+    import('./js/registrations.js').then(({ getRegistrationCount }) => {
+      return getRegistrationCount(ev.id);
+    }).then(count => {
+      countBadge.textContent = `${count} / ${ev.maxPlayers} registered`;
+    }).catch(() => {
+      countBadge.textContent = '';
+    });
   }
 
   const currentUid = getAuthUser()?.uid;

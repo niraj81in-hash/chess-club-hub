@@ -582,6 +582,20 @@
   </div>
 </dialog>
 
+<!-- Organizer check-in modal -->
+<dialog id="checkin-modal" aria-modal="true" aria-labelledby="checkin-modal-title">
+  <div class="modal-header">
+    <h2 id="checkin-modal-title">Registrations</h2>
+    <button type="button" onclick="window.closeCheckinModal()" aria-label="Close">&#x2715;</button>
+  </div>
+  <p id="checkin-event-name" class="modal-subtitle"></p>
+  <div class="modal-toolbar">
+    <span id="checkin-count-label"></span>
+    <button type="button" id="checkin-csv-btn" class="btn btn-outline btn-sm">Export CSV</button>
+  </div>
+  <div id="checkin-list" role="list"></div>
+</dialog>
+
 <script type="module" src="app.js"></script>
 <script>
   if ('serviceWorker' in navigator) {

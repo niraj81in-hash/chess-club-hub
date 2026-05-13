@@ -437,3 +437,17 @@ dialog::backdrop {
   font-size: .875rem;
   color: var(--text-dim);
 }
+.checkin-row {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.checkin-row:last-child { border-bottom: none; }
+.checkin-name { flex: 1; font-weight: 500; }
+.checkin-status { font-size: .8rem; text-transform: capitalize; padding: .15rem .4rem; border-radius: 4px; background: var(--surface2); }
+.checkin-status--confirmed { color: var(--emerald, #10b981); }
+.checkin-status--checked_in { color: var(--gold, #f59e0b); }
+.checkin-status--waitlisted { color: var(--text-dim); }
+.checkin-status--withdrawn { color: var(--red); }
