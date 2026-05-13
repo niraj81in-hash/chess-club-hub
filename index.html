@@ -51,6 +51,26 @@
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:1rem;">
+    <h3 style="margin-bottom:.75rem;color:var(--gold);">Club (online play and server ELO)</h3>
+    <p style="font-size:.85rem;color:var(--text-dim);margin-bottom:.75rem;">Online rooms and Firebase ratings are scoped to a club. Create one as a coach, or join with the club ID and join phrase.</p>
+    <p style="margin-bottom:.75rem;"><strong>Active club ID:</strong> <code id="club-current-id" style="color:var(--gold);">—</code></p>
+    <div style="display:grid;gap:1rem;grid-template-columns:1fr 1fr;">
+      <div>
+        <h4 style="font-size:.9rem;margin-bottom:.5rem;color:var(--text-dim);">Create club</h4>
+        <div class="field"><label>Club name</label><input type="text" id="club-create-name" placeholder="Lincoln High" maxlength="60" /></div>
+        <div class="field"><label>Join phrase (share privately)</label><input type="password" id="club-create-phrase" placeholder="4+ characters" maxlength="64" autocomplete="new-password" /></div>
+        <button type="button" class="btn btn-gold btn-sm" onclick="createClubFromHome()">Create</button>
+      </div>
+      <div>
+        <h4 style="font-size:.9rem;margin-bottom:.5rem;color:var(--text-dim);">Join club</h4>
+        <div class="field"><label>Club ID</label><input type="text" id="club-join-id" placeholder="8 characters" maxlength="10" style="text-transform:uppercase;" /></div>
+        <div class="field"><label>Join phrase</label><input type="password" id="club-join-phrase" placeholder="From organiser" maxlength="64" autocomplete="new-password" /></div>
+        <button type="button" class="btn btn-emerald btn-sm" onclick="joinClubFromHome()">Join</button>
+      </div>
+    </div>
+  </div>
+
   <div class="card">
     <h3 style="margin-bottom:.75rem;color:var(--gold);">Recent Games</h3>
     <div id="home-recent-games"><p style="color:var(--text-dim);font-size:.9rem;">No games yet. Play one!</p></div>
@@ -332,6 +352,19 @@
 
   <!-- ELO leaderboard -->
   <div id="lb-elo" class="card">
+    <div id="club-elo-card" style="display:none;margin-bottom:1.25rem;padding-bottom:1.25rem;border-bottom:1px solid var(--border);">
+      <h3 style="margin-bottom:.5rem;color:var(--gold);font-size:1rem;">Online club ELO (Firebase)</h3>
+      <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:.75rem;">Authoritative ratings from finished online games (requires Cloud Functions deploy).</p>
+      <table class="leaderboard" style="margin:0;">
+        <thead>
+          <tr>
+            <th>#</th><th>Player</th><th>Title</th><th>ELO</th>
+            <th>W</th><th>L</th><th>D</th><th>Games</th>
+          </tr>
+        </thead>
+        <tbody id="club-elo-body"></tbody>
+      </table>
+    </div>
     <table class="leaderboard" id="elo-table">
       <thead>
         <tr>

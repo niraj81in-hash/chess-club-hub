@@ -1,0 +1,30 @@
+{
+  "rules": {
+    "clubs": {
+      "$clubId": {
+        "meta": {
+          ".read": "auth != null && root.child('clubs').child($clubId).child('members').child(auth.uid).exists()",
+          ".write": "false"
+        },
+        "members": {
+          "$uid": {
+            ".read": "auth != null && root.child('clubs').child($clubId).child('members').child(auth.uid).exists()",
+            ".write": "false"
+          }
+        },
+        "rooms": {
+          "$roomId": {
+            ".read": "auth != null && root.child('clubs').child($clubId).child('members').child(auth.uid).exists()",
+            ".write": "auth != null && root.child('clubs').child($clubId).child('members').child(auth.uid).exists()"
+          }
+        },
+        "ratings": {
+          "$uid": {
+            ".read": "auth != null && root.child('clubs').child($clubId).child('members').child(auth.uid).exists()",
+            ".write": "false"
+          }
+        }
+      }
+    }
+  }
+}

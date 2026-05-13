@@ -7,13 +7,15 @@ import { initGameState, legalMoves, makeMove, color, type, PIECES, toFen } from 
 import { exportPGN, downloadPGN }    from './chess/pgn.js';
 import { ChessClock, TIME_CONTROLS } from './chess/clock.js';
 import { DIFFICULTY_LEVELS, getBestMoveAsync } from './chess/ai.js';
-import { getRatingTitle, getPlayerRating, savePlayerRating,
-         updateRatingsAfterGame, getEloLeaderboard, recordGameHistory } from './chess/elo.js';
-import { getProfile, saveProfile, getGames, saveGame, getGame, deleteGame,
+import { getRatingTitle, getPlayerRating,
+         updateRatingsAfterGame, getEloLeaderboard } from './chess/elo.js';
+import { initStorage, getProfile, saveProfile, getGames, saveGame, getGame, deleteGame,
          upsertPlayer, getLeaderboard, getTournaments, saveTournament, genId } from './storage/db.js';
 import { createTournament, recordResult, getBracketSummary } from './tournament/bracket.js';
 import { generateRoomCode, createRoom, joinRoom, sendMove, onMove,
-         onOpponentJoin, sendChat } from './multiplayer/relay.js';
+         onOpponentJoin, sendChat, ensureAnonymousAuth, setActiveClub,
+         cloudCreateClub, cloudJoinClub, cloudRecordOnlineGameResult, leaveRoomChannel,
+         getCurrentUid, fetchClubRatings } from './multiplayer/relay.js';
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -37,9 +39,15 @@ let cpuThinking  = false;
 let reviewGame = null;
 let reviewIdx  = 0;
 
+/** Opponent Firebase uid (online games) for server ELO */
+let opponentUid = null;
+
 // ── Init UI ───────────────────────────────────────────────────
 
-function initUI() {
+async function initUI() {
+  await initStorage();
+  try { await ensureAnonymousAuth(); } catch (e) { console.warn('Auth', e); }
+
   // Populate time control selects
   const tcHTML = TIME_CONTROLS.map((tc, i) =>
     `<option value="${i}">${tc.label}</option>`).join('');
@@ -58,68 +66,116 @@ function initUI() {
   }
 
   updatePlayerFields();
-  loadProfile();
-  renderHome();
+  await loadProfile();
+  await renderHome();
 }
 
 // ── Navigation ────────────────────────────────────────────────
 
 document.querySelectorAll('.nav-btn[data-page]').forEach(btn => {
-  btn.addEventListener('click', () => nav(btn.dataset.page));
+  btn.addEventListener('click', () => { void nav(btn.dataset.page); });
 });
 
-window.nav = function(page) {
+window.nav = async function(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-btn[data-page="${page}"]`).classList.add('active');
-  if (page === 'leaderboard') { renderLeaderboard(); renderEloLeaderboard(); }
-  if (page === 'review')      renderReviewList();
-  if (page === 'tournament')  renderTournaments();
-  if (page === 'home')        renderHome();
+  if (page === 'leaderboard') { await renderLeaderboard(); await renderEloLeaderboard(); await renderClubEloBoard(); }
+  if (page === 'review')      await renderReviewList();
+  if (page === 'tournament')  await renderTournaments();
+  if (page === 'home')        await renderHome();
 };
 
 // ── Profile ───────────────────────────────────────────────────
 
-function loadProfile() {
-  const p = getProfile();
+async function loadProfile() {
+  const p = await getProfile();
+  setActiveClub(p.clubId || null);
+  const cur = document.getElementById('club-current-id');
+  if (cur) cur.textContent = p.clubId || '— (join or create a club below)';
   if (p.name) {
     document.getElementById('profile-name').value = p.name;
-    updateEloBadge(p.name);
+    await updateEloBadge(p.name);
   }
   document.getElementById('stat-wins').textContent   = p.wins;
   document.getElementById('stat-losses').textContent = p.losses;
   document.getElementById('stat-draws').textContent  = p.draws;
 }
 
-function updateEloBadge(name) {
+async function updateEloBadge(name) {
   if (!name) return;
-  const player = getPlayerRating(name);
+  const player = await getPlayerRating(name);
   const { title, icon } = getRatingTitle(player.rating);
   document.getElementById('elo-icon').textContent   = icon;
   document.getElementById('elo-rating').textContent = player.rating;
   document.getElementById('elo-title').textContent  = title;
 }
 
-window.saveProfileName = function() {
+window.saveProfileName = async function() {
   const name = document.getElementById('profile-name').value.trim();
   if (!name) return toast('Enter a name first');
-  const p = getProfile();
+  const p = await getProfile();
   p.name = name;
-  saveProfile(p);
-  updateEloBadge(name);
+  await saveProfile(p);
+  setActiveClub(p.clubId || null);
+  await updateEloBadge(name);
   toast('Profile saved ✅');
 };
 
 // ── Home ──────────────────────────────────────────────────────
 
-function renderHome() {
-  loadProfile();
-  const games = getGames().slice(0, 5);
+async function renderHome() {
+  await loadProfile();
+  const games = (await getGames()).slice(0, 5);
   const el = document.getElementById('home-recent-games');
   if (!games.length) { el.innerHTML = '<p style="color:var(--text-dim);font-size:.9rem;">No games yet. Play one!</p>'; return; }
   el.innerHTML = games.map(g => gameCardHTML(g)).join('');
 }
+
+window.createClubFromHome = async function() {
+  const clubName = document.getElementById('club-create-name')?.value?.trim();
+  const joinPhrase = document.getElementById('club-create-phrase')?.value || '';
+  if (!clubName || clubName.length < 2) return toast('Enter a club name (2+ characters)');
+  if (joinPhrase.length < 4) return toast('Join phrase must be at least 4 characters');
+  const displayName = (document.getElementById('profile-name')?.value || '').trim() || 'Owner';
+  try {
+    await ensureAnonymousAuth();
+    const { clubId } = await cloudCreateClub({ clubName, joinPhrase, displayName });
+    const p = await getProfile();
+    p.clubId = clubId;
+    await saveProfile(p);
+    setActiveClub(clubId);
+    const cur = document.getElementById('club-current-id');
+    if (cur) cur.textContent = clubId;
+    toast(`Club created! ID: ${clubId} — share this ID and the join phrase with members.`);
+  } catch (e) {
+    console.error(e);
+    toast(e.message || 'Could not create club (deploy Cloud Functions?)');
+  }
+};
+
+window.joinClubFromHome = async function() {
+  const clubId = document.getElementById('club-join-id')?.value?.trim().toUpperCase();
+  const joinPhrase = document.getElementById('club-join-phrase')?.value || '';
+  const displayName = (document.getElementById('profile-name')?.value || '').trim() || 'Member';
+  if (!clubId || clubId.length < 4) return toast('Enter a club ID');
+  if (joinPhrase.length < 4) return toast('Enter the join phrase');
+  try {
+    await ensureAnonymousAuth();
+    await cloudJoinClub({ clubId, joinPhrase, displayName });
+    const p = await getProfile();
+    p.clubId = clubId;
+    await saveProfile(p);
+    setActiveClub(clubId);
+    const cur = document.getElementById('club-current-id');
+    if (cur) cur.textContent = clubId;
+    toast('Joined club! Online play now uses this club.');
+  } catch (e) {
+    console.error(e);
+    toast(e.message || 'Could not join club');
+  }
+};
 
 function gameCardHTML(g) {
   const icon  = g.result === 'draw' ? '🤝' : g.result === 'w' ? '♔' : '♚';
@@ -144,12 +200,12 @@ function hideAllPanels() {
 }
 
 window.showLocalSetup    = () => { hideAllPanels(); document.getElementById('local-setup').style.display = 'block'; };
-window.showComputerSetup = () => { hideAllPanels(); document.getElementById('computer-setup').style.display = 'block';
-  const p = getProfile(); if (p.name) document.getElementById('cpu-player-name').value = p.name; };
-window.showCreateRoom    = () => { hideAllPanels(); document.getElementById('create-room-panel').style.display = 'block';
-  const p = getProfile(); if (p.name) document.getElementById('host-name').value = p.name; };
-window.showJoinRoom      = () => { hideAllPanels(); document.getElementById('join-room-panel').style.display = 'block';
-  const p = getProfile(); if (p.name) document.getElementById('guest-name').value = p.name; };
+window.showComputerSetup = async () => { hideAllPanels(); document.getElementById('computer-setup').style.display = 'block';
+  const p = await getProfile(); if (p.name) document.getElementById('cpu-player-name').value = p.name; };
+window.showCreateRoom    = async () => { hideAllPanels(); document.getElementById('create-room-panel').style.display = 'block';
+  const p = await getProfile(); if (p.name) document.getElementById('host-name').value = p.name; };
+window.showJoinRoom      = async () => { hideAllPanels(); document.getElementById('join-room-panel').style.display = 'block';
+  const p = await getProfile(); if (p.name) document.getElementById('guest-name').value = p.name; };
 
 window.setDifficulty = function(idx) {
   cpuDifficulty = idx;
@@ -158,7 +214,7 @@ window.setDifficulty = function(idx) {
   });
 };
 
-window.startGame = function(mode) {
+window.startGame = async function(mode) {
   gameMode = mode;
   let white = 'White', black = 'Black';
   let tcIdx = 4;
@@ -182,7 +238,7 @@ window.startGame = function(mode) {
   playerNames = { w: white, b: black };
 
   // Show ELO ratings next to names
-  const wElo = getPlayerRating(white); const bElo = getPlayerRating(black);
+  const wElo = await getPlayerRating(white); const bElo = await getPlayerRating(black);
   document.getElementById('elo-white').textContent = mode !== 'cpu' ? `${wElo.rating} ELO` : '';
   document.getElementById('elo-black').textContent = mode !== 'cpu' ? `${bElo.rating} ELO` : '';
 
@@ -224,7 +280,7 @@ function handleTimeout(loser) {
   gameState.winner = winner;
   gameState.status = 'checkmate';
   updateStatus();
-  finalizeGame();
+  void finalizeGame();
 }
 
 // ── Launch Game ───────────────────────────────────────────────
@@ -332,7 +388,7 @@ function onSquareClick(r, c) {
 
 // ── Execute Move ──────────────────────────────────────────────
 
-function executeMove(from, to, promotion='Q') {
+function executeMove(from, to, promotion = 'Q', opts = {}) {
   const movingColor = gameState.turn;
   gameState = makeMove(gameState, from, to, promotion);
   selected = null; hints = [];
@@ -343,13 +399,13 @@ function executeMove(from, to, promotion='Q') {
   renderBoard();
   renderMoveList();
   updateStatus();
-  autoSave();
+  void autoSave();
 
-  if (gameMode !== 'local') sendMove(roomCode, { from, to, promotion });
+  if (gameMode !== 'local' && !opts.skipRelay) void sendMove(roomCode, { from, to, promotion });
 
   if (gameState.status==='checkmate'||gameState.status==='stalemate') {
     if (clock) clock.stop();
-    setTimeout(() => finalizeGame(), 400);
+    setTimeout(() => void finalizeGame(), 400);
     return;
   }
 
@@ -381,38 +437,63 @@ function scheduleCpuMove() {
 
 function handleRemoteMove(moveData) {
   if (color(gameState.board[moveData.from[0]][moveData.from[1]])===myColor) return;
-  executeMove(moveData.from, moveData.to, moveData.promotion||'Q');
+  executeMove(moveData.from, moveData.to, moveData.promotion||'Q', { skipRelay: true });
 }
 
 // ── Online rooms ──────────────────────────────────────────────
 
 window.createOnlineRoom = async function() {
+  const prof = await getProfile();
+  if (!prof.clubId) return toast('Create or join a club on Home before online play.');
+  setActiveClub(prof.clubId);
+
   const name = document.getElementById('host-name').value.trim() || 'Host';
   const tcIdx = parseInt(document.getElementById('online-time-control').value);
   roomCode = generateRoomCode();
+  opponentUid = null;
   playerNames = { w: name, b: '...' };
   gameMode = 'online-host'; myColor = 'w';
   document.getElementById('room-code-display').style.display = 'block';
   document.getElementById('room-code-text').textContent = roomCode;
+  let launched = false;
   try {
     await createRoom(roomCode, name);
-    onOpponentJoin(guestName => { playerNames.b = guestName; toast(`${guestName} joined!`); startClock(tcIdx); launchGame(true); });
+    onOpponentJoin((guestName, guestUid) => {
+      if (launched) return;
+      launched = true;
+      playerNames.b = guestName;
+      opponentUid = guestUid;
+      toast(`${guestName} joined!`);
+      startClock(tcIdx);
+      launchGame(true);
+    });
     onMove(handleRemoteMove);
-  } catch(e) { toast('Firebase not configured. See README.'); console.error(e); }
+  } catch (e) {
+    toast(e.message || 'Could not create room (Firebase rules / club?)');
+    console.error(e);
+  }
 };
 
 window.joinOnlineRoom = async function() {
+  const prof = await getProfile();
+  if (!prof.clubId) return toast('Create or join a club on Home before online play.');
+  setActiveClub(prof.clubId);
+
   const name = document.getElementById('guest-name').value.trim() || 'Guest';
   const code = document.getElementById('join-code').value.trim().toUpperCase();
-  if (code.length!==6) return toast('Enter a 6-character room code');
-  gameMode='online-guest'; myColor='b'; roomCode=code;
+  if (code.length !== 6) return toast('Enter a 6-character room code');
+  gameMode = 'online-guest'; myColor = 'b'; roomCode = code;
   try {
     const data = await joinRoom(code, name);
+    opponentUid = data.hostUid || null;
     playerNames = { w: data.host, b: name };
     onMove(handleRemoteMove);
-    startClock(4);
+    const tcIdx = parseInt(document.getElementById('online-time-control').value);
+    startClock(tcIdx);
     launchGame(true);
-  } catch(e) { toast(e.message||'Could not join room'); }
+  } catch (e) {
+    toast(e.message || 'Could not join room');
+  }
 };
 
 window.copyRoomCode = () => { navigator.clipboard.writeText(roomCode); toast('Room code copied!'); };
@@ -463,7 +544,7 @@ function moveSAN(m) {
 
 window.offerDraw = function() {
   if (!gameState) return;
-  if (confirm('Accept a draw?')) { gameState.status='stalemate'; if(clock)clock.stop(); finalizeGame('draw'); }
+  if (confirm('Accept a draw?')) { gameState.status='stalemate'; if(clock)clock.stop(); void finalizeGame('draw'); }
 };
 
 window.resignGame = function() {
@@ -471,12 +552,14 @@ window.resignGame = function() {
   const winner = gameState.turn==='w'?'b':'w';
   gameState.winner=winner; gameState.status='checkmate';
   if(clock)clock.stop();
-  updateStatus(); finalizeGame();
+  updateStatus(); void finalizeGame();
 };
 
-window.endAndSave = function() { autoSave(true); toast('Game saved!'); backToSetup(); };
+window.endAndSave = function() { void autoSave(true); toast('Game saved!'); backToSetup(); };
 
 function backToSetup() {
+  leaveRoomChannel();
+  opponentUid = null;
   document.getElementById('play-setup').style.display='block';
   document.getElementById('play-game').style.display='none';
   hideAllPanels();
@@ -484,7 +567,7 @@ function backToSetup() {
 
 // ── ELO finalization ──────────────────────────────────────────
 
-function finalizeGame(forceResult) {
+async function finalizeGame(forceResult) {
   const { status, winner } = gameState;
   let result = forceResult;
   if (!result) {
@@ -492,29 +575,60 @@ function finalizeGame(forceResult) {
     else result = 'draw';
   }
 
-  autoSave(true, result);
+  await autoSave(true, result);
 
-  // Skip ELO update for CPU games or no result yet
   if (gameMode==='cpu' || !result) {
     setTimeout(() => { showEloModal(null); }, 300);
     return;
   }
 
-  const eloResult = updateRatingsAfterGame(playerNames.w, playerNames.b, result);
+  if (gameMode === 'online-host' || gameMode === 'online-guest') {
+    const profile = await getProfile();
+    const clubId = profile.clubId;
+    const wUid = gameMode === 'online-host' ? getCurrentUid() : opponentUid;
+    const bUid = gameMode === 'online-guest' ? getCurrentUid() : opponentUid;
+    if (clubId && wUid && bUid) {
+      try {
+        const eloResult = await cloudRecordOnlineGameResult({
+          clubId,
+          result,
+          whiteUid: wUid,
+          blackUid: bUid,
+          whiteName: playerNames.w,
+          blackName: playerNames.b,
+          roomCode: roomCode || '',
+        });
+        setTimeout(() => showEloModal(eloResult, result), 300);
+        return;
+      } catch (e) {
+        console.error(e);
+        toast('Club ELO update failed — deploy Functions or check rules.');
+      }
+    }
+    setTimeout(() => showEloModal(null, result, true), 300);
+    return;
+  }
+
+  const eloResult = await updateRatingsAfterGame(playerNames.w, playerNames.b, result);
   setTimeout(() => showEloModal(eloResult, result), 300);
 }
 
-function showEloModal(eloResult, result) {
+function showEloModal(eloResult, result, onlineFailed) {
   const modal = document.getElementById('elo-modal');
   const title = document.getElementById('elo-modal-title');
   const body  = document.getElementById('elo-modal-body');
 
   if (!eloResult) {
-    // CPU game — just show result
     const { status, winner } = gameState;
     title.textContent = status==='checkmate' ? `${playerNames[winner]} wins! 🎉`
                       : status==='stalemate' ? "Stalemate — Draw! 🤝" : "Game Over";
-    body.innerHTML = `<p style="color:var(--text-dim);text-align:center;">ELO ratings are tracked in Club (non-CPU) games.</p>`;
+    if (onlineFailed) {
+      body.innerHTML = `<p style="color:var(--text-dim);text-align:center;">Online club ratings were not updated. Deploy <code>functions/</code> and database rules, or verify both players are club members.</p>`;
+    } else if (gameMode === 'cpu') {
+      body.innerHTML = `<p style="color:var(--text-dim);text-align:center;">Computer games do not change ELO. Play a local two-player or online club game for ratings.</p>`;
+    } else {
+      body.innerHTML = `<p style="color:var(--text-dim);text-align:center;">Local ELO (this device) updates for same-device games. Online club ELO uses Firebase.</p>`;
+    }
   } else {
     const wTitle = getRatingTitle(eloResult.newWhiteRating);
     const bTitle = getRatingTitle(eloResult.newBlackRating);
@@ -548,16 +662,16 @@ function showEloModal(eloResult, result) {
   modal.style.display = 'flex';
 }
 
-window.closeEloModal = function() {
+window.closeEloModal = async function() {
   document.getElementById('elo-modal').style.display = 'none';
   backToSetup();
-  renderHome();
+  await renderHome();
 };
 
 // ── Auto-save ─────────────────────────────────────────────────
 
-function autoSave(final=false, result) {
-  const profile = getProfile();
+async function autoSave(final=false, result) {
+  const profile = await getProfile();
   const myName  = profile.name||'Me';
   const r       = result || gameState.winner || (gameState.status==='stalemate'?'draw':null);
 
@@ -569,16 +683,16 @@ function autoSave(final=false, result) {
       playerNames[r]?.toLowerCase()===myName.toLowerCase()?'win':'loss',
     mode: gameMode,
   };
-  saveGame(record);
+  await saveGame(record);
 
   if (final && r) {
     const myRole = playerNames.w.toLowerCase()===myName.toLowerCase()?'w':'b';
     const myRes  = r==='draw'?'draw':r===myRole?'win':'loss';
-    const p = getProfile();
+    const p = await getProfile();
     if(myRes==='win') p.wins++; if(myRes==='loss') p.losses++; if(myRes==='draw') p.draws++;
-    saveProfile(p);
-    upsertPlayer(playerNames.w, r==='draw'?'draw':r==='w'?'win':'loss');
-    upsertPlayer(playerNames.b, r==='draw'?'draw':r==='b'?'win':'loss');
+    await saveProfile(p);
+    await upsertPlayer(playerNames.w, r==='draw'?'draw':r==='w'?'win':'loss');
+    await upsertPlayer(playerNames.b, r==='draw'?'draw':r==='b'?'win':'loss');
   }
 }
 
@@ -602,26 +716,26 @@ function appendChat(sender,text) {
 
 // ── Review ────────────────────────────────────────────────────
 
-function renderReviewList() {
-  const games=getGames();
+async function renderReviewList() {
+  const games = await getGames();
   const el=document.getElementById('review-games-list');
   if(!games.length){el.innerHTML='<p style="color:var(--text-dim);">No saved games yet.</p>';return;}
   el.innerHTML=games.map(g=>gameCardHTML(g)).join('');
 }
 
-window.loadReview = function(id) {
-  reviewGame=getGame(id); if(!reviewGame) return;
+window.loadReview = async function(id) {
+  reviewGame = await getGame(id); if(!reviewGame) return;
   reviewIdx=reviewGame.moves.length;
   document.getElementById('review-list').style.display='none';
   document.getElementById('review-board-view').style.display='block';
   renderReviewBoard(); renderReviewMoveList();
 };
 
-window.backToList = function() {
+window.backToList = async function() {
   document.getElementById('review-list').style.display='block';
   document.getElementById('review-board-view').style.display='none';
   engineController?.abort();
-  renderReviewList();
+  await renderReviewList();
 };
 
 // ── Lichess cloud engine eval ─────────────────────────────────
@@ -715,9 +829,9 @@ function renderReviewMoveList() {
 }
 
 window.jumpReview  = function(idx){reviewIdx=idx;renderReviewBoard();renderReviewMoveList();};
-window.saveAnnotation = function(){if(!reviewGame)return;reviewGame.annotations=reviewGame.annotations||{};reviewGame.annotations[reviewIdx]=document.getElementById('annotation-text').value.trim();saveGame(reviewGame);toast('Annotation saved ✅');};
+window.saveAnnotation = async function(){if(!reviewGame)return;reviewGame.annotations=reviewGame.annotations||{};reviewGame.annotations[reviewIdx]=document.getElementById('annotation-text').value.trim();await saveGame(reviewGame);toast('Annotation saved ✅');};
 window.exportCurrentGame = function(){if(!reviewGame)return;downloadPGN({white:reviewGame.white,black:reviewGame.black,result:reviewGame.result==='w'?'1-0':reviewGame.result==='b'?'0-1':'1/2-1/2',date:reviewGame.date?.slice(0,10),moves:reviewGame.moves},`${reviewGame.white}-vs-${reviewGame.black}.pgn`);};
-window.deleteCurrentGame = function(){if(!reviewGame||!confirm('Delete this game?'))return;deleteGame(reviewGame.id);backToList();toast('Game deleted');};
+window.deleteCurrentGame = async function(){if(!reviewGame||!confirm('Delete this game?'))return;await deleteGame(reviewGame.id);await backToList();toast('Game deleted');};
 
 // ── Tournament ────────────────────────────────────────────────
 
@@ -733,17 +847,23 @@ function updatePlayerFields() {
   for(let i=0;i<size;i++) container.innerHTML+=`<div class="field"><label>Player ${i+1}</label><input type="text" class="t-player" placeholder="Name..." maxlength="20" /></div>`;
 }
 
-window.createTournamentNow = function() {
+window.createTournamentNow = async function() {
   const name=document.getElementById('t-name').value.trim()||'Tournament';
   const inputs=[...document.querySelectorAll('.t-player')];
   const players=inputs.map(i=>i.value.trim()).filter(Boolean);
   if(players.length!==inputs.length) return toast('Fill in all player names');
-  try{const t=createTournament(name,players);saveTournament(t);hideNewTournament();renderTournaments();toast(`Tournament "${name}" created! 🏆`);}
+  try{
+    const t=createTournament(name,players);
+    await saveTournament(t);
+    hideNewTournament();
+    await renderTournaments();
+    toast(`Tournament "${name}" created! 🏆`);
+  }
   catch(e){toast(e.message);}
 };
 
-function renderTournaments() {
-  const list=getTournaments();
+async function renderTournaments() {
+  const list = await getTournaments();
   const el=document.getElementById('tournament-list');
   if(!list.length){el.innerHTML='<p style="color:var(--text-dim)">No tournaments yet.</p>';return;}
   el.innerHTML=list.map(t=>{
@@ -771,26 +891,69 @@ function renderTournaments() {
   }).join('');
 }
 
-window.recordTournamentResult = function(tId,matchId,result) {
-  let t=getTournaments().find(x=>x.id===tId); if(!t)return;
+window.recordTournamentResult = async function(tId,matchId,result) {
+  const list = await getTournaments();
+  let t=list.find(x=>x.id===tId); if(!t)return;
   let ri=-1,mi=-1;
   t.rounds.forEach((r,rIdx)=>r.matches.forEach((m,mIdx)=>{if(m.id===matchId){ri=rIdx;mi=mIdx;}}));
   if(ri<0) return;
-  t=recordResult(t,ri,mi,result); saveTournament(t); renderTournaments();
-  if(t.status==='complete'){toast(`🎉 Winner: ${t.winner}`);upsertPlayer(t.winner,'win');}
+  t=recordResult(t,ri,mi,result);
+  await saveTournament(t);
+  await renderTournaments();
+  if(t.status==='complete'){toast(`🎉 Winner: ${t.winner}`);await upsertPlayer(t.winner,'win');}
 };
+
+async function renderClubEloBoard() {
+  const card = document.getElementById('club-elo-card');
+  const body = document.getElementById('club-elo-body');
+  if (!card || !body) return;
+  const p = await getProfile();
+  if (!p.clubId) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  try {
+    await ensureAnonymousAuth();
+    const rows = await fetchClubRatings(p.clubId);
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:1rem;">No online club games recorded yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map((r, i) => {
+      const { title, icon, color: tc } = getRatingTitle(r.rating || 800);
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1;
+      const games = (r.wins || 0) + (r.losses || 0) + (r.draws || 0);
+      return `<tr><td>${medal}</td><td style="font-weight:600;">${escapeHtml(r.name || r.uid?.slice(0, 8) || '?')}</td>
+        <td><span style="font-size:.8rem;">${icon}</span> <span style="color:${tc};font-size:.8rem;">${title}</span></td>
+        <td style="font-weight:700;font-family:monospace;">${r.rating ?? 800}</td>
+        <td style="color:var(--emerald);">${r.wins || 0}</td>
+        <td style="color:#ef4444;">${r.losses || 0}</td>
+        <td style="color:var(--text-dim);">${r.draws || 0}</td>
+        <td style="color:var(--text-dim);">${games}</td></tr>`;
+    }).join('');
+  } catch (e) {
+    console.error(e);
+    body.innerHTML = '<tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:1rem;">Could not load club ratings (rules / auth).</td></tr>';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 // ── Leaderboard ───────────────────────────────────────────────
 
-window.switchTab = function(tab) {
+window.switchTab = async function(tab) {
   document.getElementById('lb-elo').style.display  = tab==='elo'  ? 'block' : 'none';
   document.getElementById('lb-wins').style.display = tab==='wins' ? 'block' : 'none';
   document.getElementById('tab-elo').className  = tab==='elo'  ? 'btn btn-gold btn-sm' : 'btn btn-outline btn-sm';
   document.getElementById('tab-wins').className = tab==='wins' ? 'btn btn-gold btn-sm' : 'btn btn-outline btn-sm';
+  if (tab === 'elo') await renderClubEloBoard();
 };
 
-function renderLeaderboard() {
-  const players=getLeaderboard();
+async function renderLeaderboard() {
+  const players = await getLeaderboard();
   const body=document.getElementById('leaderboard-body');
   if(!players.length){body.innerHTML='<tr><td colspan="7" style="color:var(--text-dim);text-align:center;padding:1rem;">No players yet</td></tr>';return;}
   body.innerHTML=players.map((p,i)=>{
@@ -806,8 +969,8 @@ function renderLeaderboard() {
   }).join('');
 }
 
-function renderEloLeaderboard() {
-  const players=getEloLeaderboard();
+async function renderEloLeaderboard() {
+  const players = await getEloLeaderboard();
   const body=document.getElementById('elo-body');
   if(!players.length){body.innerHTML='<tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:1rem;">No ELO data yet — play some rated games!</td></tr>';return;}
   body.innerHTML=players.map((p,i)=>{
@@ -835,4 +998,4 @@ window.toast=toast;
 
 // ── Boot ──────────────────────────────────────────────────────
 
-initUI();
+initUI().catch(err => { console.error(err); toast('App init failed — check console'); });

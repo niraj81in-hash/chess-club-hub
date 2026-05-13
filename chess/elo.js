@@ -4,6 +4,8 @@
 // Standard FIDE-style ELO with K-factor scaling
 // ============================================================
 
+import { getAllRatings, setAllRatings } from '../storage/db.js';
+
 export const DEFAULT_RATING  = 800;   // Starting ELO for new players
 export const PROVISIONAL_GAMES = 20;  // Games until rating stabilizes
 
@@ -98,46 +100,38 @@ export function recordGameHistory(player, opponent, result, change) {
   return { ...player, history: [entry, ...(player.history || [])].slice(0, 50) };
 }
 
-// ── Storage helpers (used by db.js) ──────────────────────────
+// ── Storage (IndexedDB via db.js) ─────────────────────────────
 
-const RATINGS_KEY = 'cch_ratings';
-
-export function getAllRatings() {
-  try { return JSON.parse(localStorage.getItem(RATINGS_KEY)) || {}; }
-  catch { return {}; }
-}
-
-export function getPlayerRating(name) {
-  const all = getAllRatings();
+export async function getPlayerRating(name) {
+  const all = await getAllRatings();
   return all[name.toLowerCase()] || newPlayerProfile(name);
 }
 
-export function savePlayerRating(player) {
-  const all = getAllRatings();
+export async function savePlayerRating(player) {
+  const all = { ...(await getAllRatings()) };
   all[player.name.toLowerCase()] = player;
-  localStorage.setItem(RATINGS_KEY, JSON.stringify(all));
+  await setAllRatings(all);
 }
 
-export function updateRatingsAfterGame(whiteName, blackName, result) {
+export async function updateRatingsAfterGame(whiteName, blackName, result) {
   // result: 'w' | 'b' | 'draw'
-  const white  = getPlayerRating(whiteName);
-  const black  = getPlayerRating(blackName);
+  const white  = await getPlayerRating(whiteName);
+  const black  = await getPlayerRating(blackName);
   const score  = result === 'w' ? 1 : result === 'b' ? 0 : 0.5;
 
   const { a: newWhite, b: newBlack, changeA, changeB } = calcNewRatings(white, black, score);
 
-  const gameResult = { w: 'win', b: 'loss', draw: 'draw' };
   const wResult = result === 'w' ? 'win' : result === 'b' ? 'loss' : 'draw';
   const bResult = result === 'b' ? 'win' : result === 'w' ? 'loss' : 'draw';
 
-  savePlayerRating(recordGameHistory(newWhite, black,  wResult, changeA));
-  savePlayerRating(recordGameHistory(newBlack, white, bResult, changeB));
+  await savePlayerRating(recordGameHistory(newWhite, black,  wResult, changeA));
+  await savePlayerRating(recordGameHistory(newBlack, white, bResult, changeB));
 
   return { changeA, changeB, newWhiteRating: newWhite.rating, newBlackRating: newBlack.rating };
 }
 
-export function getEloLeaderboard() {
-  const all = getAllRatings();
+export async function getEloLeaderboard() {
+  const all = await getAllRatings();
   return Object.values(all)
     .sort((a, b) => b.rating - a.rating);
 }
