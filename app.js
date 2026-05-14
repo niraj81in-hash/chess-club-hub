@@ -949,8 +949,21 @@ function scheduleCpuMove() {
 // ── Remote moves ──────────────────────────────────────────────
 
 function handleRemoteMove(moveData) {
-  if (color(gameState.board[moveData.from[0]][moveData.from[1]])===myColor) return;
-  executeMove(moveData.from, moveData.to, moveData.promotion||'Q', { skipRelay: true });
+  if (color(gameState.board[moveData.from[0]][moveData.from[1]]) === myColor) return;
+
+  const pre = pendingPreMove;
+  _clearPreMove();
+
+  executeMove(moveData.from, moveData.to, moveData.promotion || 'Q', {
+    skipRelay: true,
+    onDone: () => {
+      if (!pre || !gameState) return;
+      const lm = legalMoves(gameState, pre.from[0], pre.from[1]);
+      if (lm.some(([r, c]) => r === pre.to[0] && c === pre.to[1])) {
+        executeMove(pre.from, pre.to);
+      }
+    },
+  });
 }
 
 // ── Online rooms ──────────────────────────────────────────────
