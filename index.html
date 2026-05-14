@@ -603,7 +603,37 @@
   </div>
 </dialog>
 
+<script>
+  // Catch any module load errors and make them visible
+  window.addEventListener('error', e => {
+    if (e.message && !window.__appLoaded) {
+      console.error('[CCH] Error before app ready:', e.message, e.filename, e.lineno);
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#7f1d1d;color:#fecaca;padding:12px 16px;font-size:13px;font-family:monospace;z-index:9999;';
+      t.textContent = 'App error: ' + e.message + ' (' + (e.filename||'').split('/').pop() + ':' + e.lineno + ')';
+      document.body.appendChild(t);
+    }
+  });
+  window.addEventListener('unhandledrejection', e => {
+    if (!window.__appLoaded) {
+      console.error('[CCH] Unhandled rejection before app ready:', e.reason);
+    }
+  });
+</script>
 <script type="module" src="app.js"></script>
+<script type="module">
+  // Confirm app.js module loaded successfully
+  if (typeof window.nav === 'function') {
+    window.__appLoaded = true;
+    console.log('[CCH] app.js loaded OK — window.nav is defined');
+  } else {
+    console.error('[CCH] app.js module loaded but window.nav is NOT defined');
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#7c2d12;color:#fecaca;padding:12px 16px;font-size:13px;font-family:monospace;z-index:9999;';
+    t.textContent = 'JavaScript failed to initialize. Try: Cmd+Shift+R (hard refresh) or clear browser cache.';
+    document.body.appendChild(t);
+  }
+</script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

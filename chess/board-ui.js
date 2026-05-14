@@ -78,15 +78,26 @@ export function animateMove(from, to, pieceCode, onComplete) {
   const srcPiece = fromEl.querySelector('svg');
   if (srcPiece) srcPiece.style.visibility = 'hidden';
 
-  requestAnimationFrame(() => {
-    float.style.transform = `translate(${tr.left - fr.left}px,${tr.top - fr.top}px)`;
-  });
-
-  float.addEventListener('transitionend', () => {
+  let done = false;
+  function finish() {
+    if (done) return;
+    done = true;
     float.remove();
     if (srcPiece) srcPiece.style.visibility = '';
     onComplete();
-  }, { once: true });
+  }
+
+  // Double-rAF ensures the initial position is committed before the transform
+  // is applied, so the CSS transition actually runs and transitionend fires.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      float.style.transform = `translate(${tr.left - fr.left}px,${tr.top - fr.top}px)`;
+    });
+  });
+
+  float.addEventListener('transitionend', finish, { once: true });
+  // Fallback in case transitionend never fires (e.g. display:none parent, rAF skip)
+  setTimeout(finish, 350);
 }
 
 // ── Internal: board rendering ─────────────────────────────────

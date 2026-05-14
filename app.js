@@ -506,7 +506,11 @@ async function renderEvents() {
 async function initUI() {
   // Mount the board UI (DOM must exist, board element is present from page load)
   boardUI.mount(document.getElementById('chessboard'), {
-    onMove: (from, to) => onSquareClick(to[0], to[1], from),
+    onMove: (from, to) => {
+      selected = from;
+      hints = legalMoves(gameState, from[0], from[1]);
+      onSquareClick(to[0], to[1]);
+    },
     onPreMove: setPreMove,
   });
 
@@ -770,7 +774,7 @@ function updateTimerDisplay(times) {
     if (!el) return;
     el.textContent = clock.getFormatted(c);
     el.classList.toggle('timer-low', clock.isLow(c));
-    const isActive = gameState?.turn === c;
+    const isActive = clock.running && clock.active === c;
     el.classList.toggle('running', isActive);
     el.classList.toggle('idle', !isActive);
     // Also mark the parent bar as active
@@ -914,7 +918,7 @@ function executeMove(from, to, promotion = 'Q', opts = {}) {
     if (gameMode !== 'local' && !opts.skipRelay) void sendMove(roomCode, { from, to, promotion });
 
     if (gameState.status==='checkmate'||gameState.status==='stalemate') {
-      if (clock) clock.stop();
+      if (clock) { clock.stop(); updateTimerDisplay(clock.times); }
       setTimeout(() => void finalizeGame(), 400);
       return;
     }
@@ -943,6 +947,10 @@ function scheduleCpuMove() {
     document.getElementById('cpu-thinking').style.display = 'none';
     if (!move || !gameState) return;
     executeMove(move.from, move.to);
+  }).catch(err => {
+    cpuThinking = false;
+    document.getElementById('cpu-thinking').style.display = 'none';
+    console.error('CPU move error:', err);
   });
 }
 
@@ -1070,14 +1078,14 @@ function moveSAN(m) {
 
 window.offerDraw = function() {
   if (!gameState) return;
-  if (confirm('Accept a draw?')) { gameState.status='stalemate'; if(clock)clock.stop(); void finalizeGame('draw'); }
+  if (confirm('Accept a draw?')) { gameState.status='stalemate'; if(clock){clock.stop();updateTimerDisplay(clock.times);} void finalizeGame('draw'); }
 };
 
 window.resignGame = function() {
   if (!gameState||!confirm('Resign?')) return;
   const winner = gameState.turn==='w'?'b':'w';
   gameState.winner=winner; gameState.status='checkmate';
-  if(clock)clock.stop();
+  if(clock){clock.stop();updateTimerDisplay(clock.times);}
   _clearPreMove();
   updateStatus(); void finalizeGame();
 };

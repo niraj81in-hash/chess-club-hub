@@ -1,4 +1,4 @@
-const CACHE = 'cch-v2';
+const CACHE = 'cch-v5';
 const STATIC = [
   '/',
   '/index.html',
