@@ -27,9 +27,10 @@
 | Move animation | Yes — CSS `transition` on a floating piece element |
 | Clock display | Prominent: active player glows purple, idle player fades |
 | Coordinates | Inside board edge corners (rank on left column, file on bottom row) |
-| Captured pieces tray | No (deferred) |
+| Captured pieces tray | Yes — shown below each player bar |
+| Undo button | Yes — local and CPU games only; disabled online |
+| Pre-move | Yes — queue one move while opponent is thinking (online only) |
 | Sound effects | No (deferred) |
-| Undo button | No (deferred) |
 
 ---
 
@@ -47,11 +48,14 @@ boardUI.mount(containerEl, { onMove(from, to, promotion) {} })
 
 // Re-render with current game state
 boardUI.render(gameState, {
-  selected,       // [r,c] | null
-  hints,          // [[r,c], ...]
-  lastMove,       // { from: [r,c], to: [r,c] } | null
-  flipped,        // bool
-  interactive,    // bool — false during CPU turn or opponent's online turn
+  selected,        // [r,c] | null
+  hints,           // [[r,c], ...]
+  lastMove,        // { from: [r,c], to: [r,c] } | null
+  preMove,         // { from: [r,c], to: [r,c] } | null  (online pre-move)
+  capturedByTop,   // string[]  pieces captured by the top player
+  capturedByBottom,// string[]  pieces captured by the bottom player
+  flipped,         // bool
+  interactive,     // bool — false during CPU turn or opponent's online turn
 })
 
 // Trigger a move animation then call onMove
@@ -63,26 +67,29 @@ boardUI.animateMove(from, to, piece, callback)
 - SVG piece definitions (all 12 pieces, ~250 lines)
 - Square DOM construction and class management
 - Drag & drop event handling (`pointerdown`, `pointermove`, `pointerup`)
-- Click-to-move fallback
+- Click-to-move fallback (with pre-move detection when `interactive: false`)
 - CSS transition animation (floating element approach)
-- Last-move and selection highlight
+- Last-move, selection, and pre-move highlight
 - Coordinate label injection on edge squares
+- Captured pieces tray rendering inside player bars
+- Pre-move highlight (`sq.premove` class, purple tint)
 
 ### 3.2 Files changed
 
 | File | Change |
 |---|---|
 | `chess/board-ui.js` | **New** — full board UI module |
-| `css/tokens.css` | Update `--sq` to larger fluid value; add board-shadow token |
-| `style.css` | Replace `.board`, `.sq`, `.board-wrap` rules; add stacked game layout |
-| `app.js` | Replace `renderBoard()` calls with `boardUI.render()`; wire drag/click callbacks; pass `lastMove` from history |
-| `index.html` | Update Play page HTML structure to stacked layout |
+| `chess/engine.js` | Add `undoMove(state)` export; store `boardSnapshotBefore` in `makeMove()` history entries |
+| `css/tokens.css` | Update `--sq` formula; add `--color-premove` token (`rgba(139,92,246,.45)`) |
+| `style.css` | Replace `.board`, `.sq`, `.board-wrap` rules; add stacked game layout; add `.sq.premove` rule |
+| `app.js` | Replace `renderBoard()` with `boardUI.render()`; track `lastMove`, `pendingPreMove`; compute captured arrays from history; wire undo button; handle pre-move in online `onMove` callback |
+| `index.html` | Update Play page HTML structure to stacked layout; add Undo button to controls row |
 
 ### 3.3 Stacked layout structure (Play page)
 
 ```
 <div class="game-page">
-  <div class="player-bar" id="bar-top">   <!-- opponent -->
+  <div class="player-bar" id="bar-top">   <!-- opponent: avatar, name, captured tray, clock -->
   <div class="board-wrap">
     <div class="board-with-ranks">
       <div class="rank-labels">           <!-- 8..1 -->
@@ -91,8 +98,8 @@ boardUI.animateMove(from, to, piece, callback)
     <div class="file-labels">             <!-- a..h -->
   </div>
   <div class="status-bar">
-  <div class="player-bar" id="bar-bottom"> <!-- local player -->
-  <div class="controls">
+  <div class="player-bar" id="bar-bottom"> <!-- local player: avatar, name, captured tray, clock -->
+  <div class="controls">                 <!-- Flip · Undo · PGN · Resign -->
   <div class="move-list-wrap">
 </div>
 ```
@@ -164,12 +171,71 @@ Color inherits square color (light square label = dark color, dark square label 
 ### 4.6 Player bars
 
 ```
-[ Avatar ] [ Name / Rating / Captured row ]     [ Clock ]
+[ Avatar ] [ Name / Rating ]     [ Clock ]
+           [ Captured pieces row ]
 ```
 
 - `active-turn` class on the active player's bar: `border-color: rgba(167,139,250,.35)`
 - Clock: `running` state → purple chip (`background: #a78bfa; color: #050508`); `idle` → muted (`background: #1a1a24; color: #52525b`)
 - Avatar: initials-based circle (2 letters), white/black coloring
+
+### 4.9 Captured pieces tray
+
+Rendered inside each player bar, below the name/rating line. Shows pieces captured **by** that player (i.e. the pieces they took from the opponent), rendered as small SVG glyphs at ~55% opacity.
+
+- Pieces sorted by value: Q → R → B → N → P
+- Material advantage displayed as `+N` in purple when one side is ahead
+- Derived from `gameState.history` on each render — no separate state needed
+- `boardUI.render()` receives `capturedByTop` and `capturedByBottom` arrays computed in `app.js` from history
+
+### 4.10 Undo / takeback button
+
+Appears in the controls row as `↩ Undo`. Rules:
+
+- **Enabled** in `local` and `cpu` game modes
+- **Disabled** (greyed out, `pointer-events: none`) in `online-host` and `online-guest` modes
+- In `local` mode: removes the last move from `gameState.history` by calling a new `undoMove(state)` helper in `chess/engine.js` that pops the last history entry and restores the previous `boardSnapshot`
+- In `cpu` mode: undoes two half-moves (the player's move and the CPU's response) so the human is always back in control
+- Button is also disabled when `gameState.history.length === 0`
+
+`undoMove(state)` is a pure function added to `chess/engine.js`:
+```js
+export function undoMove(state) {
+  if (state.history.length === 0) return state;
+  const prev = state.history[state.history.length - 1];
+  return {
+    ...state,
+    board: prev.boardSnapshot,           // snapshot taken before this move
+    turn: color(prev.piece),
+    history: state.history.slice(0, -1),
+    status: 'playing',
+    winner: null,
+    enPassant: prev.enPassantSnapshot ?? null,
+  };
+}
+```
+
+Note: `boardSnapshot` in the existing history entries is the board **after** the move. We need the board **before** — so the implementation must store `boardSnapshotBefore` alongside the existing `boardSnapshot`. This requires a one-line change in `makeMove()`.
+
+### 4.11 Pre-move (online mode only)
+
+Allows the local player to queue exactly one move while waiting for the opponent's response. Only active in `online-host` and `online-guest` modes.
+
+**Behaviour:**
+- When it is **not** the local player's turn, clicking a piece + a destination (or drag-dropping) stores `pendingPreMove = { from, to }` instead of calling `executeMove`
+- The pre-move squares are highlighted with a distinct purple tint: `rgba(139,92,246,.45)` on both from and to
+- When the opponent's move arrives and state updates, `app.js` immediately attempts `executeMove(pendingPreMove.from, pendingPreMove.to)`:
+  - If still legal → executes normally (feels instant)
+  - If no longer legal (opponent changed the position) → silently discards and clears highlight
+- Only one pre-move can be queued at a time; clicking elsewhere cancels it
+- Pre-move is cleared on flip, resign, or game end
+
+**State in `app.js`:**
+```js
+let pendingPreMove = null;  // { from: [r,c], to: [r,c] } | null
+```
+
+`boardUI.render()` gains an optional `preMove` prop: `{ from, to } | null` — used to apply the purple highlight CSS class `sq.premove` on those two squares.
 
 ### 4.7 Move animation
 
@@ -199,11 +265,14 @@ Fallback: click-to-move still works normally (select → hint → select).
 
 `app.js` changes are limited to:
 
-1. Import `boardUI` from `./chess/board-ui.js`
-2. On game init: `boardUI.mount(document.getElementById('chessboard-container'), { onMove: executeMove })`
-3. Replace every `renderBoard()` call with `boardUI.render(gameState, { selected, hints, lastMove, flipped, interactive })`
-4. Track `lastMove` as `{ from, to }` — set in `executeMove()`, cleared on new game
-5. `onMove` online callback: pass to `boardUI.animateMove()` when receiving opponent move from Firebase relay
+1. Import `boardUI` from `./chess/board-ui.js`; import `undoMove` from `./chess/engine.js`
+2. On game init: `boardUI.mount(document.getElementById('chessboard-container'), { onMove: executeMove, onPreMove: setPreMove })`
+3. Replace every `renderBoard()` call with `boardUI.render(gameState, { selected, hints, lastMove, preMove: pendingPreMove, capturedByTop, capturedByBottom, flipped, interactive })`
+4. Track `lastMove = { from, to }` — set in `executeMove()`, cleared on new game
+5. Track `pendingPreMove = null | { from, to }` — set by `setPreMove()`, cleared after opponent move resolves
+6. Compute `capturedByTop` / `capturedByBottom` from `gameState.history` before each `boardUI.render()` call (pure derivation, no extra state)
+7. `onMove` online callback: after applying opponent move, attempt `pendingPreMove` if set; clear it regardless of legality
+8. Undo button `onclick`: call `undoMove()` once (local) or twice (CPU — undo CPU reply then player move); disable when `history.length === 0` or mode is online
 
 ---
 
@@ -220,7 +289,4 @@ Fallback: click-to-move still works normally (select → hint → select).
 ## 7. Out of Scope (Deferred)
 
 - Sound effects
-- Captured pieces tray
-- Undo / takeback button
-- Pre-move (queued moves while opponent is thinking)
 - Board theme switcher (additional palettes)
