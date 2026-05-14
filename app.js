@@ -3,7 +3,8 @@
 // Adds: Chess Clock, Computer Opponent, ELO Ratings
 // ============================================================
 
-import { initGameState, legalMoves, makeMove, color, type, PIECES, toFen } from './chess/engine.js';
+import { initGameState, legalMoves, makeMove, color, type, PIECES, toFen, undoMove } from './chess/engine.js';
+import * as boardUI from './chess/board-ui.js';
 import { exportPGN, downloadPGN }    from './chess/pgn.js';
 import { ChessClock, TIME_CONTROLS } from './chess/clock.js';
 import { DIFFICULTY_LEVELS, getBestMoveAsync } from './chess/ai.js';
@@ -28,6 +29,8 @@ let gameState    = null;
 let selected     = null;
 let hints        = [];
 let flipped      = false;
+let lastMove     = null;        // { from: [r,c], to: [r,c] }
+let pendingPreMove = null;      // { from: [r,c], to: [r,c] } | null  (online only)
 let gameMode     = 'local';   // 'local' | 'cpu' | 'online-host' | 'online-guest'
 let myColor      = 'w';
 let cpuColor     = 'b';
@@ -46,6 +49,25 @@ let reviewIdx  = 0;
 
 /** Opponent Firebase uid (online games) for server ELO */
 let opponentUid = null;
+
+// ── Board UI helpers ──────────────────────────────────────────
+
+function _capturedBy(col) {
+  if (!gameState) return [];
+  return gameState.history
+    .filter(h => h.piece[0] === col && h.captured)
+    .map(h => h.captured);
+}
+
+function setPreMove(from, to) {
+  if (gameMode !== 'online-host' && gameMode !== 'online-guest') return;
+  pendingPreMove = { from, to };
+  renderBoard();
+}
+
+function _clearPreMove() {
+  pendingPreMove = null;
+}
 
 // ── Auth modal ────────────────────────────────────────────────
 
@@ -482,6 +504,12 @@ async function renderEvents() {
 // ── Init UI ───────────────────────────────────────────────────
 
 async function initUI() {
+  // Mount the board UI (DOM must exist, board element is present from page load)
+  boardUI.mount(document.getElementById('chessboard'), {
+    onMove: (from, to) => onSquareClick(to[0], to[1], from),
+    onPreMove: setPreMove,
+  });
+
   await initStorage();
   try { await ensureAnonymousAuth(); } catch (e) { console.warn('Auth', e); }
 
@@ -742,6 +770,12 @@ function updateTimerDisplay(times) {
     if (!el) return;
     el.textContent = clock.getFormatted(c);
     el.classList.toggle('timer-low', clock.isLow(c));
+    const isActive = gameState?.turn === c;
+    el.classList.toggle('running', isActive);
+    el.classList.toggle('idle', !isActive);
+    // Also mark the parent bar as active
+    const barId = c === 'w' ? 'bar-white' : 'bar-black';
+    document.getElementById(barId)?.classList.toggle('active', isActive);
   });
 }
 
@@ -761,6 +795,8 @@ function launchGame(online = false) {
   gameState    = initGameState();
   selected     = null;
   hints        = [];
+  lastMove     = null;
+  pendingPreMove = null;
   annotations  = {};
   cpuThinking  = false;
   activeGameId = genId();
@@ -783,7 +819,6 @@ function launchGame(online = false) {
   renderBoard();
   renderMoveList();
   updateStatus();
-  renderCoords();
 
   // Start clock on first move (white)
   if (clock?.enabled) clock.start('w');
@@ -795,39 +830,35 @@ function launchGame(online = false) {
 // ── Board Rendering ───────────────────────────────────────────
 
 function renderBoard() {
-  const board = document.getElementById('chessboard');
-  board.innerHTML = '';
+  if (!gameState) return;
+  const interactive = !(
+    cpuThinking ||
+    (gameMode === 'cpu' && gameState.turn === cpuColor) ||
+    (gameMode !== 'local' && gameMode !== 'cpu' && gameState.turn !== myColor)
+  );
+  boardUI.render(gameState, {
+    selected,
+    hints,
+    lastMove,
+    preMove: pendingPreMove,
+    capturedByTop:    _capturedBy(flipped ? 'w' : 'b'),
+    capturedByBottom: _capturedBy(flipped ? 'b' : 'w'),
+    flipped,
+    interactive,
+  });
 
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      const r = flipped ? 7 - row : row;
-      const c = flipped ? 7 - col : col;
-      const sq = document.createElement('div');
-      sq.className = `sq ${(r+c)%2===0 ? 'light' : 'dark'}`;
-      sq.dataset.r = r; sq.dataset.c = c;
-
-      const piece = gameState.board[r][c];
-      if (piece) { sq.textContent = PIECES[piece]; sq.dataset.pieceColor = piece[0]; }
-      if (selected && selected[0]===r && selected[1]===c) sq.classList.add('selected');
-      if (hints.some(([hr,hc]) => hr===r && hc===c))
-        sq.classList.add(gameState.board[r][c] ? 'capture-hint' : 'move-hint');
-      if (piece && type(piece)==='K' && gameState.status==='check' && color(piece)===gameState.turn)
-        sq.classList.add('in-check');
-
-      sq.addEventListener('click', () => onSquareClick(r, c));
-      board.appendChild(sq);
-    }
-  }
+  // Wire click handlers onto newly rendered squares
+  const boardEl = document.getElementById('chessboard');
+  boardEl.querySelectorAll('[data-r]').forEach(sq => {
+    sq.addEventListener('click', () => onSquareClick(+sq.dataset.r, +sq.dataset.c));
+  });
 }
 
 function renderCoords() {
-  const ranks = flipped ? '12345678' : '87654321';
-  const files = flipped ? 'hgfedcba' : 'abcdefgh';
-  document.getElementById('rank-labels').innerHTML = ranks.split('').map(r=>`<span>${r}</span>`).join('');
-  document.getElementById('file-labels').innerHTML = files.split('').map(f=>`<span>${f}</span>`).join('');
+  // Coordinate labels are now rendered inside the board squares by board-ui.js
 }
 
-window.flipBoard = function() { flipped = !flipped; renderBoard(); renderCoords(); };
+window.flipBoard = function() { flipped = !flipped; _clearPreMove(); renderBoard(); };
 
 // ── Square Click ──────────────────────────────────────────────
 
@@ -863,7 +894,9 @@ function onSquareClick(r, c) {
 function executeMove(from, to, promotion = 'Q', opts = {}) {
   const movingColor = gameState.turn;
   gameState = makeMove(gameState, from, to, promotion);
-  selected = null; hints = [];
+  lastMove  = { from, to };
+  selected  = null;
+  hints     = [];
 
   // Switch clock
   if (clock?.enabled) clock.switch(movingColor);
