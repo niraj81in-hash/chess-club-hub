@@ -11,7 +11,7 @@ const admin = require('firebase-admin');
 // ⚠️ USER ACTION REQUIRED: replace the empty string with your Sentry Node.js DSN
 const Sentry = require('@sentry/node');
 (function () {
-  const dsn = ''; // ⚠️ Replace with your Sentry Node.js DSN from sentry.io
+  const dsn = 'https://fc9eff6845359dc58afd3f1213315c17@o4511384906170368.ingest.us.sentry.io/4511385833308160'; // ⚠️ Replace with your Sentry Node.js DSN from sentry.io
   if (dsn && dsn.indexOf('sentry.io') !== -1) {
     Sentry.init({ dsn, tracesSampleRate: 0.1 });
   }
