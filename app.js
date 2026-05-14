@@ -894,30 +894,36 @@ function onSquareClick(r, c) {
 
 function executeMove(from, to, promotion = 'Q', opts = {}) {
   const movingColor = gameState.turn;
-  gameState = makeMove(gameState, from, to, promotion);
-  lastMove  = { from, to };
-  selected  = null;
-  hints     = [];
+  const movingPiece = gameState.board[from[0]][from[1]];
 
-  // Switch clock
-  if (clock?.enabled) clock.switch(movingColor);
+  boardUI.animateMove(from, to, movingPiece, () => {
+    gameState = makeMove(gameState, from, to, promotion);
+    lastMove  = { from, to };
+    selected  = null;
+    hints     = [];
 
-  renderBoard();
-  renderMoveList();
-  updateStatus();
-  _updateUndoBtn();
-  void autoSave();
+    // Switch clock
+    if (clock?.enabled) clock.switch(movingColor);
 
-  if (gameMode !== 'local' && !opts.skipRelay) void sendMove(roomCode, { from, to, promotion });
+    renderBoard();
+    renderMoveList();
+    updateStatus();
+    _updateUndoBtn();
+    void autoSave();
 
-  if (gameState.status==='checkmate'||gameState.status==='stalemate') {
-    if (clock) clock.stop();
-    setTimeout(() => void finalizeGame(), 400);
-    return;
-  }
+    if (gameMode !== 'local' && !opts.skipRelay) void sendMove(roomCode, { from, to, promotion });
 
-  // CPU response
-  if (gameMode==='cpu' && gameState.turn===cpuColor) scheduleCpuMove();
+    if (gameState.status==='checkmate'||gameState.status==='stalemate') {
+      if (clock) clock.stop();
+      setTimeout(() => void finalizeGame(), 400);
+      return;
+    }
+
+    // CPU response
+    if (gameMode==='cpu' && gameState.turn===cpuColor) scheduleCpuMove();
+
+    opts.onDone?.();
+  });
 }
 
 window.promote = function(piece) {
