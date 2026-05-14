@@ -115,72 +115,88 @@ label { font-size: .85rem; color: var(--text-dim); display: block; margin-bottom
 
 /* ── Chess Board ────────────────────────────────────────────── */
 .board-wrap {
+  width: 100%;
+  max-width: 520px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: .5rem;
 }
 
+.board-with-ranks { display: flex; align-items: stretch; }
+
 .board {
+  flex: 1;
   display: grid;
-  grid-template-columns: repeat(8, var(--sq));
-  grid-template-rows:    repeat(8, var(--sq));
-  border: 3px solid var(--gold);
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  aspect-ratio: 1 / 1;
   border-radius: 4px;
   overflow: hidden;
   user-select: none;
+  box-shadow: 0 12px 48px rgba(0,0,0,.7), 0 0 0 2px rgba(167,139,250,.15);
 }
 
 .sq {
-  width: var(--sq);
-  height: var(--sq);
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(var(--sq) * .65);
   cursor: pointer;
-  position: relative;
-  transition: background .1s;
+  transition: background .08s;
 }
-.sq.light { background: var(--light-sq); }
-.sq.dark  { background: var(--dark-sq); }
-.sq.selected { background: var(--sel-sq) !important; }
-.sq.in-check { background: var(--check-sq) !important; }
+.sq.light { background: var(--color-square-light); }
+.sq.dark  { background: var(--color-square-dark); }
+.sq.selected   { background: var(--color-square-selected)  !important; }
+.sq.last-from  { background: var(--color-square-last-from); }
+.sq.last-to    { background: var(--color-square-last-to); }
+.sq.in-check   { background: var(--color-square-check)     !important; }
+.sq.premove    { background: var(--color-premove)           !important; }
+.sq.drag-over  { background: var(--color-square-selected)  !important; }
 
-.sq[data-piece-color="w"] {
-  color: var(--color-piece-white);
-  text-shadow: 0 0 2px var(--color-on-dark), 0 1px 3px var(--color-piece-white-shadow);
-}
-.sq[data-piece-color="b"] {
-  color: var(--color-piece-black);
-  text-shadow: 0 0 2px rgba(255,255,255,0.9), 0 1px 3px var(--color-piece-black-shadow);
-}
+.sq .piece { width: 82%; height: 82%; pointer-events: none; display: block; }
 
 .sq.move-hint::after {
   content: '';
   position: absolute;
-  width: 33%;
-  height: 33%;
+  width: 32%; height: 32%;
   border-radius: 50%;
-  background: var(--move-dot);
+  background: var(--color-move-dot);
+  pointer-events: none;
 }
 .sq.capture-hint::after {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 50%;
-  border: 4px solid var(--move-dot);
+  border: 5px solid var(--color-move-dot);
+  pointer-events: none;
 }
 
-.coord-file, .coord-rank {
+/* Coordinate labels inside edge squares */
+.coord-rank, .coord-file {
+  position: absolute;
+  font-size: .55rem;
+  font-weight: 700;
+  opacity: .8;
+  pointer-events: none;
+  line-height: 1;
+}
+.coord-rank { top: 2px; left: 3px; }
+.coord-file { bottom: 2px; right: 3px; }
+.sq.light .coord-rank, .sq.light .coord-file { color: var(--color-square-dark); }
+.sq.dark  .coord-rank, .sq.dark  .coord-file { color: var(--color-square-light); }
+
+/* ── Stacked game layout ────────────────────────────────────── */
+.game-page {
   display: flex;
-  color: var(--text-dim);
-  font-size: .7rem;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 1rem;
 }
-.coord-file { gap: calc(var(--sq) - .7rem); padding: 0 .35rem; }
-.coord-rank { flex-direction: column; gap: calc(var(--sq) - .7rem); padding: .35rem 0; }
 
-/* ── Game info panel ────────────────────────────────────────── */
+/* Legacy layout alias (non-Play pages untouched) */
 .game-layout {
   display: flex;
   gap: 1.5rem;
@@ -201,26 +217,60 @@ label { font-size: .85rem; color: var(--text-dim); display: block; margin-bottom
   align-items: center;
   gap: .6rem;
   padding: .6rem .9rem;
-  border-radius: 8px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
+  width: 100%;
 }
-.player-bar.active { border-color: var(--gold); }
-.player-color {
-  width: 20px; height: 20px;
+.player-bar.active { border-color: rgba(167,139,250,.35); }
+
+.player-avatar {
+  width: 34px; height: 34px;
   border-radius: 50%;
-  border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .72rem; font-weight: 700; flex-shrink: 0;
 }
-.player-color.white { background: var(--color-piece-white); }
-.player-color.black { background: var(--color-piece-black); }
-.player-name  { font-weight: 600; flex: 1; }
+.player-avatar.white { background: #e8e8e8; border: 2px solid #ccc; color: #333; }
+.player-avatar.black { background: #222;    border: 2px solid #555; color: #aaa; }
+
+.player-info  { flex: 1; min-width: 0; }
+.player-name  { font-size: .9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-rating { font-size: .72rem; color: var(--text-dim); }
+
+.captured-row { display: flex; gap: 1px; align-items: center; flex-wrap: wrap; margin-top: .15rem; min-height: 16px; }
+.cap-piece { display: inline-flex; opacity: .65; }
+.cap-piece svg { width: 14px; height: 14px; }
+.material-adv { font-size: .7rem; color: var(--gold); font-weight: 700; margin-left: .2rem; }
+
+.player-clock {
+  font-family: monospace; font-size: 1.1rem; font-weight: 700;
+  padding: .3rem .6rem; border-radius: 8px; flex-shrink: 0;
+}
+.player-clock.running { background: #a78bfa; color: #050508; }
+.player-clock.idle    { background: var(--surface2); color: var(--text-dim); }
+
+/* Legacy aliases */
+.player-color { display: none; }
 .player-timer { font-family: monospace; font-size: 1.1rem; color: var(--gold); }
 
+.move-list-wrap {
+  width: 100%;
+  background: var(--surface2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.move-list-header {
+  padding: .45rem .75rem;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
 .move-list {
   background: var(--surface2);
   border-radius: 8px;
   padding: .75rem;
-  max-height: 240px;
+  max-height: 200px;
   overflow-y: auto;
   font-size: .85rem;
   font-family: monospace;

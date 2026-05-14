@@ -50,11 +50,14 @@
   --color-badge-loss-fg: #fecaca;
 
   /* ── Chess board ─────────────────────────────────── */
-  --color-square-light: #e8dcc8;
+  --color-square-light: #f0d9b5;
   --color-square-dark: #b58863;
-  --color-square-selected: rgba(139, 92, 246, 0.45);
-  --color-move-dot: rgba(0, 0, 0, 0.28);
-  --color-square-check: rgba(251, 113, 133, 0.55);
+  --color-square-selected: rgba(100, 180, 80, 0.65);
+  --color-square-last-from: rgba(246, 246, 105, 0.45);
+  --color-square-last-to: rgba(246, 246, 105, 0.60);
+  --color-move-dot: rgba(0, 0, 0, 0.22);
+  --color-square-check: rgba(220, 50, 50, 0.55);
+  --color-premove: rgba(139, 92, 246, 0.45);
 
   /* Piece contrast on squares */
   --color-piece-white: #ffffff;
@@ -102,8 +105,8 @@
   --duration-normal: 200ms;
   --duration-slow: 320ms;
 
-  /* Board cell size (fluid) */
-  --sq: clamp(56px, 11vmin, 96px);
+  /* Board cell size — tracks actual cell width for coordinate label spacing */
+  --sq: calc((min(520px, 100vw - 2rem)) / 8);
 
   /* ── Legacy bridge (existing style.css) ─────────── */
   --bg: var(--color-bg);
