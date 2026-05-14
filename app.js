@@ -819,6 +819,7 @@ function launchGame(online = false) {
   renderBoard();
   renderMoveList();
   updateStatus();
+  _updateUndoBtn();
 
   // Start clock on first move (white)
   if (clock?.enabled) clock.start('w');
@@ -904,6 +905,7 @@ function executeMove(from, to, promotion = 'Q', opts = {}) {
   renderBoard();
   renderMoveList();
   updateStatus();
+  _updateUndoBtn();
   void autoSave();
 
   if (gameMode !== 'local' && !opts.skipRelay) void sendMove(roomCode, { from, to, promotion });
@@ -1057,6 +1059,7 @@ window.resignGame = function() {
   const winner = gameState.turn==='w'?'b':'w';
   gameState.winner=winner; gameState.status='checkmate';
   if(clock)clock.stop();
+  _clearPreMove();
   updateStatus(); void finalizeGame();
 };
 
@@ -1065,9 +1068,44 @@ window.endAndSave = function() { void autoSave(true); toast('Game saved!'); back
 function backToSetup() {
   leaveRoomChannel();
   opponentUid = null;
+  _clearPreMove();
   document.getElementById('play-setup').style.display='block';
   document.getElementById('play-game').style.display='none';
   hideAllPanels();
+}
+
+// ── Undo ──────────────────────────────────────────────────────
+
+window.undoLastMove = function() {
+  if (!gameState || gameState.history.length === 0) return;
+  if (gameMode === 'online-host' || gameMode === 'online-guest') return;
+
+  gameState = undoMove(gameState);
+  if (gameMode === 'cpu' && gameState.history.length > 0 && gameState.turn === cpuColor) {
+    gameState = undoMove(gameState); // also undo the CPU's reply
+  }
+
+  selected = null;
+  hints    = [];
+  lastMove = gameState.history.length > 0
+    ? { from: gameState.history.at(-1).from, to: gameState.history.at(-1).to }
+    : null;
+
+  renderBoard();
+  renderMoveList();
+  updateStatus();
+  _updateUndoBtn();
+};
+
+function _updateUndoBtn() {
+  const btn = document.getElementById('undo-btn');
+  if (!btn) return;
+  const disabled = !gameState ||
+    gameState.history.length === 0 ||
+    gameMode === 'online-host' ||
+    gameMode === 'online-guest';
+  btn.disabled = disabled;
+  btn.style.opacity = disabled ? '0.4' : '';
 }
 
 // ── ELO finalization ──────────────────────────────────────────
