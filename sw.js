@@ -1,4 +1,4 @@
-const CACHE = 'cch-v1';
+const CACHE = 'cch-v5';
 const STATIC = [
   '/',
   '/index.html',
@@ -8,6 +8,7 @@ const STATIC = [
   '/css/tokens.css',
   '/css/primitives.css',
   '/chess/engine.js',
+  '/chess/board-ui.js',
   '/chess/ai.js',
   '/chess/clock.js',
   '/chess/pgn.js',

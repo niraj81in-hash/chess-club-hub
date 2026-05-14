@@ -3,7 +3,8 @@
 // Adds: Chess Clock, Computer Opponent, ELO Ratings
 // ============================================================
 
-import { initGameState, legalMoves, makeMove, color, type, PIECES, toFen } from './chess/engine.js';
+import { initGameState, legalMoves, makeMove, color, type, PIECES, toFen, undoMove } from './chess/engine.js';
+import * as boardUI from './chess/board-ui.js';
 import { exportPGN, downloadPGN }    from './chess/pgn.js';
 import { ChessClock, TIME_CONTROLS } from './chess/clock.js';
 import { DIFFICULTY_LEVELS, getBestMoveAsync } from './chess/ai.js';
@@ -28,6 +29,8 @@ let gameState    = null;
 let selected     = null;
 let hints        = [];
 let flipped      = false;
+let lastMove     = null;        // { from: [r,c], to: [r,c] }
+let pendingPreMove = null;      // { from: [r,c], to: [r,c] } | null  (online only)
 let gameMode     = 'local';   // 'local' | 'cpu' | 'online-host' | 'online-guest'
 let myColor      = 'w';
 let cpuColor     = 'b';
@@ -46,6 +49,25 @@ let reviewIdx  = 0;
 
 /** Opponent Firebase uid (online games) for server ELO */
 let opponentUid = null;
+
+// ── Board UI helpers ──────────────────────────────────────────
+
+function _capturedBy(col) {
+  if (!gameState) return [];
+  return gameState.history
+    .filter(h => h.piece[0] === col && h.captured)
+    .map(h => h.captured);
+}
+
+function setPreMove(from, to) {
+  if (gameMode !== 'online-host' && gameMode !== 'online-guest') return;
+  pendingPreMove = { from, to };
+  renderBoard();
+}
+
+function _clearPreMove() {
+  pendingPreMove = null;
+}
 
 // ── Auth modal ────────────────────────────────────────────────
 
@@ -482,6 +504,16 @@ async function renderEvents() {
 // ── Init UI ───────────────────────────────────────────────────
 
 async function initUI() {
+  // Mount the board UI (DOM must exist, board element is present from page load)
+  boardUI.mount(document.getElementById('chessboard'), {
+    onMove: (from, to) => {
+      selected = from;
+      hints = legalMoves(gameState, from[0], from[1]);
+      onSquareClick(to[0], to[1]);
+    },
+    onPreMove: setPreMove,
+  });
+
   await initStorage();
   try { await ensureAnonymousAuth(); } catch (e) { console.warn('Auth', e); }
 
@@ -742,6 +774,12 @@ function updateTimerDisplay(times) {
     if (!el) return;
     el.textContent = clock.getFormatted(c);
     el.classList.toggle('timer-low', clock.isLow(c));
+    const isActive = clock.running && clock.active === c;
+    el.classList.toggle('running', isActive);
+    el.classList.toggle('idle', !isActive);
+    // Also mark the parent bar as active
+    const barId = c === 'w' ? 'bar-white' : 'bar-black';
+    document.getElementById(barId)?.classList.toggle('active', isActive);
   });
 }
 
@@ -761,6 +799,8 @@ function launchGame(online = false) {
   gameState    = initGameState();
   selected     = null;
   hints        = [];
+  lastMove     = null;
+  pendingPreMove = null;
   annotations  = {};
   cpuThinking  = false;
   activeGameId = genId();
@@ -783,7 +823,7 @@ function launchGame(online = false) {
   renderBoard();
   renderMoveList();
   updateStatus();
-  renderCoords();
+  _updateUndoBtn();
 
   // Start clock on first move (white)
   if (clock?.enabled) clock.start('w');
@@ -795,39 +835,35 @@ function launchGame(online = false) {
 // ── Board Rendering ───────────────────────────────────────────
 
 function renderBoard() {
-  const board = document.getElementById('chessboard');
-  board.innerHTML = '';
+  if (!gameState) return;
+  const interactive = !(
+    cpuThinking ||
+    (gameMode === 'cpu' && gameState.turn === cpuColor) ||
+    (gameMode !== 'local' && gameMode !== 'cpu' && gameState.turn !== myColor)
+  );
+  boardUI.render(gameState, {
+    selected,
+    hints,
+    lastMove,
+    preMove: pendingPreMove,
+    capturedByTop:    _capturedBy(flipped ? 'w' : 'b'),
+    capturedByBottom: _capturedBy(flipped ? 'b' : 'w'),
+    flipped,
+    interactive,
+  });
 
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      const r = flipped ? 7 - row : row;
-      const c = flipped ? 7 - col : col;
-      const sq = document.createElement('div');
-      sq.className = `sq ${(r+c)%2===0 ? 'light' : 'dark'}`;
-      sq.dataset.r = r; sq.dataset.c = c;
-
-      const piece = gameState.board[r][c];
-      if (piece) { sq.textContent = PIECES[piece]; sq.dataset.pieceColor = piece[0]; }
-      if (selected && selected[0]===r && selected[1]===c) sq.classList.add('selected');
-      if (hints.some(([hr,hc]) => hr===r && hc===c))
-        sq.classList.add(gameState.board[r][c] ? 'capture-hint' : 'move-hint');
-      if (piece && type(piece)==='K' && gameState.status==='check' && color(piece)===gameState.turn)
-        sq.classList.add('in-check');
-
-      sq.addEventListener('click', () => onSquareClick(r, c));
-      board.appendChild(sq);
-    }
-  }
+  // Wire click handlers onto newly rendered squares
+  const boardEl = document.getElementById('chessboard');
+  boardEl.querySelectorAll('[data-r]').forEach(sq => {
+    sq.addEventListener('click', () => onSquareClick(+sq.dataset.r, +sq.dataset.c));
+  });
 }
 
 function renderCoords() {
-  const ranks = flipped ? '12345678' : '87654321';
-  const files = flipped ? 'hgfedcba' : 'abcdefgh';
-  document.getElementById('rank-labels').innerHTML = ranks.split('').map(r=>`<span>${r}</span>`).join('');
-  document.getElementById('file-labels').innerHTML = files.split('').map(f=>`<span>${f}</span>`).join('');
+  // Coordinate labels are now rendered inside the board squares by board-ui.js
 }
 
-window.flipBoard = function() { flipped = !flipped; renderBoard(); renderCoords(); };
+window.flipBoard = function() { flipped = !flipped; _clearPreMove(); renderBoard(); };
 
 // ── Square Click ──────────────────────────────────────────────
 
@@ -862,27 +898,36 @@ function onSquareClick(r, c) {
 
 function executeMove(from, to, promotion = 'Q', opts = {}) {
   const movingColor = gameState.turn;
-  gameState = makeMove(gameState, from, to, promotion);
-  selected = null; hints = [];
+  const movingPiece = gameState.board[from[0]][from[1]];
 
-  // Switch clock
-  if (clock?.enabled) clock.switch(movingColor);
+  boardUI.animateMove(from, to, movingPiece, () => {
+    gameState = makeMove(gameState, from, to, promotion);
+    lastMove  = { from, to };
+    selected  = null;
+    hints     = [];
 
-  renderBoard();
-  renderMoveList();
-  updateStatus();
-  void autoSave();
+    // Switch clock
+    if (clock?.enabled) clock.switch(movingColor);
 
-  if (gameMode !== 'local' && !opts.skipRelay) void sendMove(roomCode, { from, to, promotion });
+    renderBoard();
+    renderMoveList();
+    updateStatus();
+    _updateUndoBtn();
+    void autoSave();
 
-  if (gameState.status==='checkmate'||gameState.status==='stalemate') {
-    if (clock) clock.stop();
-    setTimeout(() => void finalizeGame(), 400);
-    return;
-  }
+    if (gameMode !== 'local' && !opts.skipRelay) void sendMove(roomCode, { from, to, promotion });
 
-  // CPU response
-  if (gameMode==='cpu' && gameState.turn===cpuColor) scheduleCpuMove();
+    if (gameState.status==='checkmate'||gameState.status==='stalemate') {
+      if (clock) { clock.stop(); updateTimerDisplay(clock.times); }
+      setTimeout(() => void finalizeGame(), 400);
+      return;
+    }
+
+    // CPU response
+    if (gameMode==='cpu' && gameState.turn===cpuColor) scheduleCpuMove();
+
+    opts.onDone?.();
+  });
 }
 
 window.promote = function(piece) {
@@ -902,14 +947,31 @@ function scheduleCpuMove() {
     document.getElementById('cpu-thinking').style.display = 'none';
     if (!move || !gameState) return;
     executeMove(move.from, move.to);
+  }).catch(err => {
+    cpuThinking = false;
+    document.getElementById('cpu-thinking').style.display = 'none';
+    console.error('CPU move error:', err);
   });
 }
 
 // ── Remote moves ──────────────────────────────────────────────
 
 function handleRemoteMove(moveData) {
-  if (color(gameState.board[moveData.from[0]][moveData.from[1]])===myColor) return;
-  executeMove(moveData.from, moveData.to, moveData.promotion||'Q', { skipRelay: true });
+  if (color(gameState.board[moveData.from[0]][moveData.from[1]]) === myColor) return;
+
+  const pre = pendingPreMove;
+  _clearPreMove();
+
+  executeMove(moveData.from, moveData.to, moveData.promotion || 'Q', {
+    skipRelay: true,
+    onDone: () => {
+      if (!pre || !gameState) return;
+      const lm = legalMoves(gameState, pre.from[0], pre.from[1]);
+      if (lm.some(([r, c]) => r === pre.to[0] && c === pre.to[1])) {
+        executeMove(pre.from, pre.to);
+      }
+    },
+  });
 }
 
 // ── Online rooms ──────────────────────────────────────────────
@@ -1016,14 +1078,15 @@ function moveSAN(m) {
 
 window.offerDraw = function() {
   if (!gameState) return;
-  if (confirm('Accept a draw?')) { gameState.status='stalemate'; if(clock)clock.stop(); void finalizeGame('draw'); }
+  if (confirm('Accept a draw?')) { gameState.status='stalemate'; if(clock){clock.stop();updateTimerDisplay(clock.times);} void finalizeGame('draw'); }
 };
 
 window.resignGame = function() {
   if (!gameState||!confirm('Resign?')) return;
   const winner = gameState.turn==='w'?'b':'w';
   gameState.winner=winner; gameState.status='checkmate';
-  if(clock)clock.stop();
+  if(clock){clock.stop();updateTimerDisplay(clock.times);}
+  _clearPreMove();
   updateStatus(); void finalizeGame();
 };
 
@@ -1032,9 +1095,44 @@ window.endAndSave = function() { void autoSave(true); toast('Game saved!'); back
 function backToSetup() {
   leaveRoomChannel();
   opponentUid = null;
+  _clearPreMove();
   document.getElementById('play-setup').style.display='block';
   document.getElementById('play-game').style.display='none';
   hideAllPanels();
+}
+
+// ── Undo ──────────────────────────────────────────────────────
+
+window.undoLastMove = function() {
+  if (!gameState || gameState.history.length === 0) return;
+  if (gameMode === 'online-host' || gameMode === 'online-guest') return;
+
+  gameState = undoMove(gameState);
+  if (gameMode === 'cpu' && gameState.history.length > 0 && gameState.turn === cpuColor) {
+    gameState = undoMove(gameState); // also undo the CPU's reply
+  }
+
+  selected = null;
+  hints    = [];
+  lastMove = gameState.history.length > 0
+    ? { from: gameState.history.at(-1).from, to: gameState.history.at(-1).to }
+    : null;
+
+  renderBoard();
+  renderMoveList();
+  updateStatus();
+  _updateUndoBtn();
+};
+
+function _updateUndoBtn() {
+  const btn = document.getElementById('undo-btn');
+  if (!btn) return;
+  const disabled = !gameState ||
+    gameState.history.length === 0 ||
+    gameMode === 'online-host' ||
+    gameMode === 'online-guest';
+  btn.disabled = disabled;
+  btn.style.opacity = disabled ? '0.4' : '';
 }
 
 // ── ELO finalization ──────────────────────────────────────────

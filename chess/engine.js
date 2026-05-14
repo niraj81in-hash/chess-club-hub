@@ -268,7 +268,14 @@ export function makeMove(state, from, to, promotion = 'Q') {
     history: [...history, {
       from, to, piece, captured, promotion,
       boardSnapshot: cloneBoard(nb),
-      enPassantSnapshot: newEnPassant
+      enPassantSnapshot: newEnPassant,
+      undoSnapshot: {
+        board: cloneBoard(board),
+        castling: { ...castling },
+        enPassant,
+        halfMove,
+        fullMove,
+      },
     }],
     status: 'playing',
     winner: null
@@ -338,4 +345,23 @@ export function toSAN(board, from, to, promotion) {
   }
   const cap = board[to[0]][to[1]] ? 'x' : '';
   return t + cap + dest;
+}
+
+// ── Undo last move ────────────────────────────────────────────
+
+export function undoMove(state) {
+  if (state.history.length === 0) return state;
+  const last = state.history[state.history.length - 1];
+  const snap = last.undoSnapshot;
+  return {
+    board: snap.board,
+    turn: color(last.piece),
+    castling: snap.castling,
+    enPassant: snap.enPassant,
+    halfMove: snap.halfMove,
+    fullMove: snap.fullMove,
+    history: state.history.slice(0, -1),
+    status: 'playing',
+    winner: null,
+  };
 }

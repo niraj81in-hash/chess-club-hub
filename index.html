@@ -259,71 +259,75 @@
 
   <!-- Active game board -->
   <div id="play-game" style="display:none;">
-    <div class="game-layout">
-      <!-- Board side -->
-      <div class="board-wrap">
-        <div class="player-bar" id="bar-black">
-          <div class="player-color black"></div>
-          <span class="player-name" id="name-black">Black</span>
-          <div style="margin-left:auto;display:flex;align-items:center;gap:.5rem;">
-            <span id="elo-black" style="font-size:.75rem;color:var(--text-dim);"></span>
-            <span class="player-timer" id="timer-black" style="display:none;">5:00</span>
-          </div>
+    <div class="game-page">
+
+      <!-- Online info bar -->
+      <div id="online-info" style="display:none;width:100%;text-align:center;">
+        <span style="color:var(--text-dim);font-size:.85rem;">Room: </span>
+        <strong id="active-room-code" style="color:var(--gold);letter-spacing:.1em;"></strong>
+      </div>
+
+      <!-- Opponent (top) -->
+      <div class="player-bar" id="bar-black">
+        <div class="player-avatar black" id="avatar-black">BL</div>
+        <div class="player-info">
+          <div class="player-name" id="name-black">Black</div>
+          <div class="player-rating" id="elo-black"></div>
+          <div class="captured-row" id="captured-bottom"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:.25rem;">
-          <div class="coord-rank" id="rank-labels"></div>
+        <span class="player-clock idle" id="timer-black" style="display:none;">—:——</span>
+      </div>
+
+      <!-- Board -->
+      <div class="board-wrap">
+        <div class="board-with-ranks">
           <div class="board" id="chessboard"></div>
         </div>
-        <div class="coord-file" id="file-labels"></div>
-        <div class="player-bar" id="bar-white">
-          <div class="player-color white"></div>
-          <span class="player-name" id="name-white">White</span>
-          <div style="margin-left:auto;display:flex;align-items:center;gap:.5rem;">
-            <span id="elo-white" style="font-size:.75rem;color:var(--text-dim);"></span>
-            <span class="player-timer" id="timer-white" style="display:none;">5:00</span>
-          </div>
+      </div>
+
+      <!-- Status -->
+      <div class="status-bar playing" id="game-status">White to move</div>
+
+      <!-- CPU thinking indicator -->
+      <div id="cpu-thinking" style="display:none;color:var(--text-dim);font-size:.85rem;text-align:center;">🤖 Thinking…</div>
+
+      <!-- Local player (bottom) -->
+      <div class="player-bar" id="bar-white">
+        <div class="player-avatar white" id="avatar-white">WH</div>
+        <div class="player-info">
+          <div class="player-name" id="name-white">White</div>
+          <div class="player-rating" id="elo-white"></div>
+          <div class="captured-row" id="captured-top"></div>
+        </div>
+        <span class="player-clock idle" id="timer-white" style="display:none;">—:——</span>
+      </div>
+
+      <!-- Controls -->
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;">
+        <button class="btn btn-surface btn-sm" onclick="flipBoard()">⇄ Flip</button>
+        <button class="btn btn-surface btn-sm" id="undo-btn" onclick="undoLastMove()">↩ Undo</button>
+        <button class="btn btn-surface btn-sm" onclick="endAndSave()">↓ Save PGN</button>
+        <button class="btn btn-outline btn-sm" onclick="offerDraw()">🤝 Draw</button>
+        <button class="btn btn-red btn-sm" onclick="resignGame()">⚑ Resign</button>
+      </div>
+
+      <!-- Move list -->
+      <div class="move-list-wrap">
+        <div class="move-list-header">Move History</div>
+        <div class="move-list" id="move-list"></div>
+      </div>
+
+      <!-- Chat panel (online only) -->
+      <div id="chat-panel" style="display:none;width:100%;">
+        <div class="chat-box" id="chat-messages"></div>
+        <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+          <input id="chat-input" type="text" placeholder="Say something..." maxlength="200" onkeydown="if(event.key==='Enter')sendChatMsg()">
+          <button class="btn btn-surface btn-sm" onclick="sendChatMsg()">Send</button>
         </div>
       </div>
 
-      <!-- Sidebar -->
-      <div class="game-sidebar">
-        <div class="status-bar playing" id="game-status">White to move</div>
-
-        <!-- CPU thinking indicator -->
-        <div id="cpu-thinking" style="display:none;text-align:center;padding:.5rem;color:var(--gold);font-size:.9rem;animation:pulse 1s infinite;">
-          🤖 Computer is thinking...
-        </div>
-
-        <div class="card" style="padding:.75rem;">
-          <h3 style="margin-bottom:.5rem;font-size:.85rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;">Moves</h3>
-          <div class="move-list" id="move-list"></div>
-        </div>
-
-        <!-- Online room info -->
-        <div id="online-info" style="display:none;" class="card">
-          <p style="font-size:.8rem;color:var(--text-dim);">Room Code</p>
-          <div style="font-size:1.4rem;font-weight:800;letter-spacing:.15em;color:var(--gold);font-family:monospace;" id="active-room-code"></div>
-        </div>
-
-        <!-- Chat -->
-        <div id="chat-panel" style="display:none;" class="card">
-          <h3 style="margin-bottom:.5rem;font-size:.85rem;color:var(--text-dim);">Chat</h3>
-          <div class="chat-box" id="chat-messages"></div>
-          <div style="display:flex;gap:.5rem;margin-top:.5rem;">
-            <input type="text" id="chat-input" placeholder="Message..." maxlength="80" />
-            <button class="btn btn-surface btn-sm" onclick="sendChatMsg()">Send</button>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
-          <button class="btn btn-outline btn-sm" onclick="offerDraw()">🤝 Draw</button>
-          <button class="btn btn-red btn-sm"     onclick="resignGame()">🏳 Resign</button>
-          <button class="btn btn-surface btn-sm" onclick="endAndSave()">💾 Save</button>
-        </div>
-        <button class="btn btn-outline btn-sm" onclick="flipBoard()">🔄 Flip Board</button>
-      </div>
-    </div>
-  </div>
+    </div><!-- /.game-page -->
+  </div><!-- /#play-game -->
 
   <!-- Promotion modal -->
   <div class="modal-overlay" id="promo-modal" style="display:none;">
@@ -599,7 +603,37 @@
   </div>
 </dialog>
 
+<script>
+  // Catch any module load errors and make them visible
+  window.addEventListener('error', e => {
+    if (e.message && !window.__appLoaded) {
+      console.error('[CCH] Error before app ready:', e.message, e.filename, e.lineno);
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#7f1d1d;color:#fecaca;padding:12px 16px;font-size:13px;font-family:monospace;z-index:9999;';
+      t.textContent = 'App error: ' + e.message + ' (' + (e.filename||'').split('/').pop() + ':' + e.lineno + ')';
+      document.body.appendChild(t);
+    }
+  });
+  window.addEventListener('unhandledrejection', e => {
+    if (!window.__appLoaded) {
+      console.error('[CCH] Unhandled rejection before app ready:', e.reason);
+    }
+  });
+</script>
 <script type="module" src="app.js"></script>
+<script type="module">
+  // Confirm app.js module loaded successfully
+  if (typeof window.nav === 'function') {
+    window.__appLoaded = true;
+    console.log('[CCH] app.js loaded OK — window.nav is defined');
+  } else {
+    console.error('[CCH] app.js module loaded but window.nav is NOT defined');
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#7c2d12;color:#fecaca;padding:12px 16px;font-size:13px;font-family:monospace;z-index:9999;';
+    t.textContent = 'JavaScript failed to initialize. Try: Cmd+Shift+R (hard refresh) or clear browser cache.';
+    document.body.appendChild(t);
+  }
+</script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

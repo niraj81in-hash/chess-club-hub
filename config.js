@@ -13,8 +13,5 @@ export const firebaseConfig = {
   measurementId: "G-E4DMY1ZPZ0"
 };
 
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-
 /** Same region you deploy Cloud Functions to */
 export const functionsRegion = 'us-central1';
