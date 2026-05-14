@@ -5,9 +5,8 @@ on:
     branches: ["main"]
 
 # ⚠️ USER ACTION REQUIRED:
-# Add a GitHub secret named FIREBASE_SERVICE_ACCOUNT with the content of
-# a Firebase service account JSON key:
-#   Firebase Console → Project settings → Service accounts → Generate new private key
+# Generate a Firebase CI token: npx firebase-tools login:ci
+# Add it as a GitHub secret named FIREBASE_TOKEN:
 #   GitHub repo → Settings → Secrets and variables → Actions → New repository secret
 
 jobs:
@@ -31,9 +30,4 @@ jobs:
         run: npm run build
 
       - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: "${{ secrets.GITHUB_TOKEN }}"
-          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
-          channelId: live
-          projectId: chess-club-hub-4cd54
+        run: npx firebase-tools deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}" --project chess-club-hub-4cd54 --non-interactive
