@@ -501,3 +501,27 @@ dialog::backdrop {
 .checkin-status--checked_in { color: var(--gold, #f59e0b); }
 .checkin-status--waitlisted { color: var(--text-dim); }
 .checkin-status--withdrawn { color: var(--red); }
+
+.engine-panel { display:flex; flex-direction:column; gap:.5rem; padding:.5rem; border:1px solid var(--border); border-radius:.5rem; background:var(--surface); }
+.engine-settings { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; font-size:.85rem; }
+.engine-setting { display:flex; gap:.35rem; align-items:center; color:var(--text-dim); }
+.engine-setting select, .engine-setting input[type=range] { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:.25rem; padding:.15rem .35rem; }
+.depth-presets { display:flex; gap:.25rem; }
+.depth-chip { font-size:.8rem; padding:.2rem .5rem; border:1px solid var(--border); border-radius:.25rem; background:var(--surface2); color:var(--text-dim); cursor:pointer; }
+.depth-chip.active { background:var(--gold); color:#000; border-color:var(--gold); }
+.engine-source { margin-left:auto; font-size:.7rem; padding:.1rem .35rem; border-radius:.2rem; border:1px solid var(--border); color:var(--text-dim); }
+.engine-source.cloud { color:var(--emerald); border-color:var(--emerald); }
+.engine-source.local { color:var(--gold);    border-color:var(--gold); }
+.engine-readout { display:flex; gap:.5rem; align-items:baseline; font-family:monospace; }
+.engine-fullgame { display:flex; gap:.5rem; align-items:center; }
+.analyze-progress { display:flex; gap:.5rem; align-items:center; flex:1; }
+.analyze-progress-bar { flex:1; height:6px; background:var(--surface2); border-radius:3px; overflow:hidden; }
+.analyze-progress-bar > div { height:100%; width:0; background:var(--gold); transition:width .15s ease; }
+.eval-graph-container { width:100%; }
+.move-quality { font-weight:600; margin-left:.15rem; }
+.move-quality.best        { color:var(--emerald); }
+.move-quality.excellent   { color:var(--emerald); opacity:.7; }
+.move-quality.good        { color:var(--text-dim); }
+.move-quality.inaccuracy  { color:#facc15; }
+.move-quality.mistake     { color:#f97316; }
+.move-quality.blunder     { color:var(--red); }
