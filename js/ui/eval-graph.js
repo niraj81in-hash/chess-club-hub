@@ -47,7 +47,7 @@ export function renderEvalGraph(evals, options = {}) {
     svg.addEventListener('click', (e) => {
       const rect = svg.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
-      const idx = Math.round(x * (evals.length - 1));
+      const idx = Math.max(0, Math.min(evals.length - 1, Math.round(x * (evals.length - 1))));
       onClick(idx);
     });
   }
