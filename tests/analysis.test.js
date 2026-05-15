@@ -109,4 +109,19 @@ describe('analyzeGame — full-game pass', () => {
     expect(updates[0]).toMatchObject({ index: 0, total: 3 });
     expect(updates[2]).toMatchObject({ index: 2, total: 3 });
   });
+
+  it('sends correct FENs to fetch (start position + after e4)', async () => {
+    const fetchCalls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      fetchCalls.push(url);
+      return { ok: false, status: 404 };
+    }));
+    await analyzeGame([{ from: [6, 4], to: [4, 4] }], { depth: 10 });
+    // 2 positions = 2 fetch calls.
+    expect(fetchCalls.length).toBe(2);
+    // Initial position: start FEN, white to move, all castling rights, no en passant.
+    expect(decodeURIComponent(fetchCalls[0])).toContain('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq');
+    // After e4: black to move, all castling rights, en passant on e3.
+    expect(decodeURIComponent(fetchCalls[1])).toContain('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3');
+  });
 });
