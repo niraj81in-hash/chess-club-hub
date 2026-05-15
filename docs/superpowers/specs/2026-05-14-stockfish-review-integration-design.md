@@ -17,7 +17,7 @@ Captured from clarifying Q&A on 2026-05-14:
 |---|---|---|
 | Engine strategy | **Augment** Lichess cloud-eval | Cloud first per position; local Stockfish fallback when not cached or offline. |
 | Analysis scope | **Full-game pass + per-position** | Lichess/Chess.com pattern. Both supported. |
-| Stockfish version | **Stockfish 17 only for v1; picker architecture pre-wired** | Version dropdown disabled in UI for v1; registry in `engine/versions.js` makes adding versions a one-line change. |
+| Stockfish version | **Stockfish 16 only for v1; picker architecture pre-wired** | Version dropdown disabled in UI for v1; registry in `engine/versions.js` makes adding versions a one-line change. |
 | Depth UX | **Presets + Custom slider** | Quick 12 / Standard 18 / Deep 22 chips; "Custom" toggle reveals slider (10–26). Default: Standard. |
 | Full-game depth | **Lighter default (14), overridable** | Confirmation dialog when user-selected depth ≥ 20 estimates time. |
 | Threading | **Auto-detect SharedArrayBuffer (both builds)** | Loader picks multi-thread when available, single-thread otherwise. For v1, COOP/COEP headers are NOT enabled → SAB unavailable → effectively single-thread only. Plumbing ready for #13b. |
@@ -88,13 +88,13 @@ engine/
 // URLs below are illustrative — replace with concrete pinned URLs at the
 // version-selection step of the implementation plan.
 export const ENGINES = {
-  'stockfish-17': {
-    label: 'Stockfish 17',
+  'stockfish-16': {
+    label: 'Stockfish 16',
     st:  '<jsdelivr URL — single-threaded build>',
     mt:  '<jsdelivr URL — multi-threaded build>',
   },
 };
-export const DEFAULT_ENGINE = 'stockfish-17';
+export const DEFAULT_ENGINE = 'stockfish-16';
 ```
 
 ### COOP/COEP decision for v1
@@ -151,7 +151,7 @@ Progress UX: thin progress bar over the move list ("Analyzing move 23/60…"). U
 ```js
 // added to existing game shape in storage/db.js
 analysis: {
-  version: 'stockfish-17',
+  version: 'stockfish-16',
   depth: 14,
   evals: [{ cp?, mate?, depth }, ...],     // one per ply, index = ply number (0 = initial position)
   qualities: ['best', 'inaccuracy', ...],  // one per ply (excluding initial)
@@ -173,7 +173,7 @@ All new DOM produced via the `js/ui/primitives.js` `el()` helper. No new `innerH
 ### New components (additive — nothing removed)
 
 1. **Engine settings strip** (above the board, collapsible)
-   - Version: `Stockfish 17` dropdown (disabled in v1)
+   - Version: `Stockfish 16` dropdown (disabled in v1)
    - Depth: preset chips `Quick` / `Standard` / `Deep` + `Custom` toggle revealing a slider (10–26)
    - Source indicator: badge `Cloud` or `Local` reflecting the last result's source
 
