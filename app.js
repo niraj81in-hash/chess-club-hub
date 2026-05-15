@@ -1517,16 +1517,49 @@ function renderReviewBoard() {
 }
 
 function renderReviewMoveList() {
-  const el=document.getElementById('review-move-list');
-  const moves=reviewGame.moves; let html='';
-  for(let i=0;i<moves.length;i+=2){
-    const wm=moves[i],bm=moves[i+1];
-    html+=`<div class="move-pair"><span class="move-num">${i/2+1}.</span>
-      <span class="move-san${reviewIdx===i+1?' active':''}" onclick="jumpReview(${i+1})">${moveSAN(wm)}</span>
-      ${bm?`<span class="move-san${reviewIdx===i+2?' active':''}" onclick="jumpReview(${i+2})">${moveSAN(bm)}</span>`:''}
-    </div>`;
+  const el = document.getElementById('review-move-list');
+  while (el.firstChild) el.removeChild(el.firstChild);
+  if (!reviewGame) return;
+  const moves = reviewGame.moves;
+  const qualities = reviewGame.analysis?.qualities || [];
+
+  for (let i = 0; i < moves.length; i += 2) {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.gap = '.5rem';
+    row.style.padding = '.15rem 0';
+
+    const num = document.createElement('span');
+    num.style.color = 'var(--text-dim)';
+    num.style.minWidth = '2rem';
+    num.textContent = `${Math.floor(i / 2) + 1}.`;
+    row.appendChild(num);
+
+    appendMoveSpan(row, moves[i],     i,     qualities[i]);
+    if (moves[i + 1]) appendMoveSpan(row, moves[i + 1], i + 1, qualities[i + 1]);
+
+    el.appendChild(row);
   }
-  el.innerHTML=html||'<span style="color:var(--text-dim)">No moves</span>';
+}
+
+function appendMoveSpan(row, move, plyIdx, quality) {
+  const span = document.createElement('span');
+  span.className = 'move-san' + (reviewIdx === plyIdx + 1 ? ' active' : '');
+  span.style.cursor = 'pointer';
+  span.addEventListener('click', () => window.jumpReview(plyIdx + 1));
+  span.textContent = moveSAN(move);
+
+  if (quality) {
+    const badge = document.createElement('span');
+    badge.className = `move-quality ${quality}`;
+    badge.textContent = ' ' + qualityToSymbol(quality);
+    span.appendChild(badge);
+  }
+  row.appendChild(span);
+}
+
+function qualityToSymbol(q) {
+  return { best: '✓', excellent: '', good: '', inaccuracy: '?!', mistake: '?', blunder: '??' }[q] || '';
 }
 
 window.jumpReview  = function(idx){reviewIdx=idx;renderReviewBoard();renderReviewMoveList();};
