@@ -376,14 +376,47 @@
           </div>
           <div class="move-list" id="review-move-list" style="max-height:300px;"></div>
         </div>
-        <div class="card">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;">
-            <h3>Engine</h3>
-            <span id="engine-depth" style="font-size:.75rem;color:var(--text-dim);"></span>
+        <div class="engine-panel">
+          <!-- Settings strip -->
+          <div class="engine-settings">
+            <label class="engine-setting">
+              <span>Engine</span>
+              <select id="engine-version" disabled>
+                <option value="stockfish-16">Stockfish 16</option>
+              </select>
+            </label>
+            <div class="engine-setting depth-presets" role="radiogroup" aria-label="Analysis depth">
+              <button type="button" class="depth-chip" data-depth="12">Quick</button>
+              <button type="button" class="depth-chip active" data-depth="18">Standard</button>
+              <button type="button" class="depth-chip" data-depth="22">Deep</button>
+              <button type="button" class="depth-chip" id="depth-custom-toggle" data-depth="custom">Custom</button>
+            </div>
+            <label class="engine-setting depth-slider-wrap" id="depth-slider-wrap" hidden>
+              <span>Depth <output id="depth-slider-val">18</output></span>
+              <input type="range" id="depth-slider" min="10" max="26" value="18" />
+            </label>
+            <span class="engine-source" id="engine-source"></span>
           </div>
-          <div id="engine-eval" style="font-family:monospace;font-size:1.4rem;font-weight:700;color:var(--text-dim);">—</div>
-          <div id="engine-lines" style="font-size:.78rem;color:var(--text-dim);line-height:1.7;margin-top:.4rem;font-family:monospace;"></div>
-          <div id="engine-status" style="font-size:.72rem;color:var(--text-dim);margin-top:.25rem;"></div>
+
+          <!-- Eval readout (preserves existing IDs) -->
+          <div class="engine-readout">
+            <span id="engine-eval">—</span>
+            <span id="engine-depth"></span>
+            <span id="engine-status"></span>
+          </div>
+          <div id="engine-lines"></div>
+
+          <!-- Full-game analysis controls -->
+          <div class="engine-fullgame">
+            <button type="button" id="analyze-game-btn" class="btn btn-surface btn-sm">⚙️ Analyze game</button>
+            <div id="analyze-progress" class="analyze-progress" hidden>
+              <div class="analyze-progress-bar"><div id="analyze-progress-fill"></div></div>
+              <span id="analyze-progress-label"></span>
+            </div>
+          </div>
+
+          <!-- Eval graph (filled after a full-game pass) -->
+          <div id="eval-graph-container" class="eval-graph-container" hidden></div>
         </div>
         <div class="card">
           <h3 style="margin-bottom:.5rem;">Annotation</h3>
