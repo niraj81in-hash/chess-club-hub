@@ -13,11 +13,15 @@ export function pickStockfishUrl(engineId = DEFAULT_ENGINE) {
   return { url: canSAB ? engine.mt : engine.st, threaded: canSAB, engineId };
 }
 
-// Boots our wrapper worker and tells it which Stockfish URL to load.
-// The wrapper worker lives at /engine/stockfish-worker.js and proxies UCI ↔ postMessage.
+// Boots Stockfish directly as the worker. Modern Stockfish builds (v15+) are
+// designed to BE the worker — the script registers its own onmessage handler
+// and posts UCI output back via postMessage. We talk UCI text directly; no
+// wrapper layer is needed. (See engine/analysis.js for the UCI parser.)
+//
+// Requires same-origin hosting because browsers block cross-origin Worker
+// scripts, and the Stockfish runtime loads its .wasm via a relative URL.
 export function createEngineWorker(engineId = DEFAULT_ENGINE) {
-  const { url, threaded, engineId: id } = pickStockfishUrl(engineId);
-  const worker = new Worker('/engine/stockfish-worker.js');
-  worker.postMessage({ type: 'init', stockfishUrl: url });
-  return { worker, threaded, engineId: id };
+  const { url, threaded } = pickStockfishUrl(engineId);
+  const worker = new Worker(url);
+  return { worker, threaded, engineId };
 }

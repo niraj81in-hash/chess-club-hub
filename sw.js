@@ -1,4 +1,4 @@
-const CACHE = 'cch-v6';
+const CACHE = 'cch-v7';
 const STATIC = [
   '/',
   '/index.html',
@@ -19,10 +19,17 @@ const STATIC = [
   '/js/utils.js',
   '/js/ui/icons.js',
   '/js/ui/primitives.js',
+  '/js/ui/eval-graph.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/js/events.js',
   '/js/registrations.js',
+  '/engine/analysis.js',
+  '/engine/move-quality.js',
+  '/engine/stockfish-loader.js',
+  '/engine/versions.js',
+  '/engine/stockfish/stockfish-nnue-16-single.js',
+  '/engine/stockfish/stockfish-nnue-16-single.wasm',
   '/manifest.webmanifest',
 ];
 
@@ -42,13 +49,12 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Pass-through for live data and cross-origin engine binaries — the browser
-  // HTTP cache handles re-use after the first fetch.
+  // Network-first for live data (Firebase, Google APIs, Lichess cloud-eval).
+  // Stockfish is now bundled locally, so the jsdelivr pass-through is gone.
   const isExternal = url.hostname.includes('firebase') ||
                      url.hostname.includes('googleapis') ||
                      url.hostname.includes('gstatic') ||
-                     url.hostname.includes('lichess') ||
-                     url.hostname.includes('jsdelivr');
+                     url.hostname.includes('lichess');
   if (isExternal) {
     e.respondWith(fetch(e.request).catch(() => new Response('', { status: 503 })));
     return;

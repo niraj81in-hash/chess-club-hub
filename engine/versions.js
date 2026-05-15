@@ -7,12 +7,18 @@
 export const ENGINES = {
   'stockfish-16': {
     label: 'Stockfish 16',
+    // Bundled locally because cross-origin Workers are blocked by the browser
+    // regardless of CORS headers — and the Stockfish runtime tries to load its
+    // .wasm via a relative URL, which only resolves correctly when the .js and
+    // .wasm are co-located at the same origin. See engine/stockfish/ for the
+    // binaries (sourced from npm `stockfish@16.0.0`).
+
     // Single-threaded build — works in every browser, no special headers required.
-    st: 'https://cdn.jsdelivr.net/npm/stockfish@16.1.0/src/stockfish-nnue-16-single.js',
+    st: '/engine/stockfish/stockfish-nnue-16-single.js',
     // Multi-threaded build — requires SharedArrayBuffer + COOP/COEP headers.
     // Currently unreachable in v1 (headers not enabled); included so the loader can
     // pick it up automatically once task #13b lands.
-    mt: 'https://cdn.jsdelivr.net/npm/stockfish@16.1.0/src/stockfish-nnue-16.js',
+    mt: '/engine/stockfish/stockfish-nnue-16.js',
   },
 };
 

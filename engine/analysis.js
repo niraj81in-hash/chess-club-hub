@@ -14,7 +14,25 @@ function isPlausibleFen(fen) {
   return parts[1] === 'w' || parts[1] === 'b';
 }
 
+// ── UCI info-line parser.
+// Example line: "info depth 14 seldepth 18 multipv 1 score cp 23 nodes ... pv e2e4 e7e5 g1f3"
+function parseInfoLine(line) {
+  const parts = line.split(' ');
+  const out = { multipv: 1, depth: null, cp: null, mate: null, pv: '' };
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (p === 'depth')        out.depth   = parseInt(parts[++i], 10);
+    else if (p === 'multipv') out.multipv = parseInt(parts[++i], 10);
+    else if (p === 'cp')      out.cp      = parseInt(parts[++i], 10);
+    else if (p === 'mate')    out.mate    = parseInt(parts[++i], 10);
+    else if (p === 'pv')    { out.pv = parts.slice(i + 1).join(' '); break; }
+  }
+  if (out.depth == null || out.pv === '') return null;
+  return out;
+}
+
 // ── Worker lifecycle (lazy, persistent across analyses).
+// The worker IS Stockfish — we talk UCI text directly via postMessage.
 let workerCtx = null;        // { worker, ready }
 let workerReadyPromise = null;
 
@@ -22,6 +40,7 @@ function ensureWorker() {
   if (workerCtx) return workerReadyPromise;
   const { worker } = createEngineWorker();
   workerCtx = { worker, ready: false };
+
   // Worker crashes: reset state so the next analyzePosition recreates the worker.
   worker.addEventListener('error', () => {
     workerCtx = null;
@@ -34,19 +53,25 @@ function ensureWorker() {
       req.reject(err);
     }
   });
+
   workerReadyPromise = new Promise((resolve, reject) => {
+    let gotUciOk = false;
     const onMessage = (e) => {
       if (!workerCtx) return;
-      const m = e.data;
-      if (m.type === 'ready') { workerCtx.ready = true; worker.removeEventListener('message', onMessage); resolve(); }
-      else if (m.type === 'error' && !workerCtx.ready) {
+      const line = typeof e.data === 'string' ? e.data : '';
+      if (!gotUciOk && line === 'uciok') {
+        gotUciOk = true;
+        worker.postMessage('isready');
+        return;
+      }
+      if (gotUciOk && line === 'readyok') {
+        workerCtx.ready = true;
         worker.removeEventListener('message', onMessage);
-        workerCtx = null;
-        workerReadyPromise = null;
-        reject(new Error(m.message || 'Engine failed to load'));
+        resolve();
       }
     };
     worker.addEventListener('message', onMessage);
+    worker.postMessage('uci');
   });
   return workerReadyPromise;
 }
@@ -60,7 +85,7 @@ export function cancel() {
   activeRequest = null;
   req.abort();
   if (workerCtx?.worker) {
-    workerCtx.worker.postMessage({ type: 'stop' });
+    workerCtx.worker.postMessage('stop');
     if (req.listener) workerCtx.worker.removeEventListener('message', req.listener);
   }
   const err = new Error('Analysis cancelled');
@@ -88,22 +113,16 @@ export async function analyzePosition(fen, options = {}) {
       resolve,
     };
   });
-  // Capture this invocation's request token so we can detect — after
-  // any await — whether we are still the active request or have been
-  // superseded by a newer call to analyzePosition (which would have
-  // already rejected `pending` via cancel()).
+  // Capture this invocation's request token so we can detect — after any
+  // await — whether we've been superseded by a newer call to analyzePosition.
   const myRequest = activeRequest;
-  // Attach a swallow-handler so this promise being rejected before
-  // anyone awaits it does not surface as an unhandled rejection. The
-  // real consumer (the async-return below) still sees the rejection
-  // because `return pending` re-attaches.
+  // Swallow-handler prevents unhandled-rejection noise during the window
+  // between cancel() rejecting `pending` and the real consumer awaiting it.
   pending.catch(() => {});
 
   try {
     const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=${multiPV}`;
     const res = await fetch(url, { signal: ctl.signal });
-    // If a newer call superseded us during the fetch await, `pending`
-    // has already been rejected with AbortError by cancel().
     if (activeRequest !== myRequest) return pending;
     if (res.ok) {
       const data = await res.json();
@@ -131,7 +150,7 @@ export async function analyzePosition(fen, options = {}) {
     // any other fetch error → fall through to local
   }
 
-  // ── Step 2: local Stockfish.
+  // ── Step 2: local Stockfish (talk UCI text directly).
   if (activeRequest !== myRequest) return pending;
   try {
     await ensureWorker();
@@ -146,10 +165,12 @@ export async function analyzePosition(fen, options = {}) {
       }
       let lastInfo = null;
       const listener = (e) => {
-        const m = e.data;
-        if (m.type === 'info' && m.multipv === 1) {
-          lastInfo = m;
-        } else if (m.type === 'bestmove') {
+        const line = typeof e.data === 'string' ? e.data : '';
+        if (!line) return;
+        if (line.startsWith('info ') && line.includes(' pv ')) {
+          const info = parseInfoLine(line);
+          if (info && info.multipv === 1) lastInfo = info;
+        } else if (line.startsWith('bestmove ')) {
           worker.removeEventListener('message', listener);
           const out = lastInfo
             ? {
@@ -162,14 +183,13 @@ export async function analyzePosition(fen, options = {}) {
               }
             : { source: 'local', depth, reachedDepth: 0, cp: null, mate: null, pvs: [] };
           resolve(out);
-        } else if (m.type === 'error') {
-          worker.removeEventListener('message', listener);
-          reject(Object.assign(new Error(m.message || 'Engine error'), { name: 'EngineError' }));
         }
       };
       worker.addEventListener('message', listener);
       activeRequest.listener = listener;
-      worker.postMessage({ type: 'analyze', fen, depth, multiPV });
+      worker.postMessage(`setoption name MultiPV value ${multiPV}`);
+      worker.postMessage(`position fen ${fen}`);
+      worker.postMessage(`go depth ${depth}`);
     });
 
     if (activeRequest === myRequest) activeRequest = null;

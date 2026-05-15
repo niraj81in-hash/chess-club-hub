@@ -1,18 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the loader so analysis.js doesn't try to spawn a real Worker.
+// Mock the loader so analysis.js doesn't spawn a real Stockfish worker.
+// Stockfish IS the worker — talks UCI text directly via postMessage. The mock
+// emulates the bits of the UCI protocol that analysis.js relies on.
 vi.mock('../engine/stockfish-loader.js', () => {
   return {
     createEngineWorker: () => {
       const listeners = new Set();
+      let currentDepth = null;
+      const emit = (line) => listeners.forEach((cb) => cb({ data: line }));
       const worker = {
-        postMessage: vi.fn((msg) => {
-          // Simulate Stockfish responses on the next microtask.
+        postMessage: vi.fn((cmd) => {
+          // analysis.js only sends UCI strings to the worker.
+          const s = String(cmd);
           queueMicrotask(() => {
-            if (msg.type === 'analyze') {
-              listeners.forEach((cb) => cb({ data: { type: 'info', depth: msg.depth, cp: 42, mate: null, multipv: 1, pv: 'e2e4' } }));
-              listeners.forEach((cb) => cb({ data: { type: 'bestmove', move: 'e2e4' } }));
+            if (s === 'uci') {
+              emit('uciok');
+            } else if (s === 'isready') {
+              emit('readyok');
+            } else if (s.startsWith('go depth ')) {
+              currentDepth = parseInt(s.split(' ')[2], 10);
+              emit(`info depth ${currentDepth} multipv 1 score cp 42 pv e2e4`);
+              emit('bestmove e2e4');
+            } else if (s === 'stop') {
+              if (currentDepth != null) emit('bestmove e2e4');
             }
+            // 'setoption ...' and 'position fen ...' produce no UCI reply.
           });
         }),
         addEventListener: (event, cb) => { if (event === 'message') listeners.add(cb); },
@@ -20,8 +33,6 @@ vi.mock('../engine/stockfish-loader.js', () => {
         terminate: vi.fn(),
         __listeners: listeners,
       };
-      // Fire 'ready' on the next tick.
-      queueMicrotask(() => listeners.forEach((cb) => cb({ data: { type: 'ready' } })));
       return { worker, threaded: false, engineId: 'stockfish-16' };
     },
   };
