@@ -12,13 +12,13 @@ function isPlausibleFen(fen) {
 }
 
 // ── Worker lifecycle (lazy, persistent across analyses).
-let workerCtx = null;        // { worker, threaded, ready, listeners: Set }
+let workerCtx = null;        // { worker, ready }
 let workerReadyPromise = null;
 
 function ensureWorker() {
   if (workerCtx) return workerReadyPromise;
-  const { worker, threaded, engineId } = createEngineWorker();
-  workerCtx = { worker, threaded, engineId, ready: false };
+  const { worker } = createEngineWorker();
+  workerCtx = { worker, ready: false };
   // Worker crashes: reset state so the next analyzePosition recreates the worker.
   worker.addEventListener('error', () => {
     workerCtx = null;
@@ -33,6 +33,7 @@ function ensureWorker() {
   });
   workerReadyPromise = new Promise((resolve, reject) => {
     const onMessage = (e) => {
+      if (!workerCtx) return;
       const m = e.data;
       if (m.type === 'ready') { workerCtx.ready = true; worker.removeEventListener('message', onMessage); resolve(); }
       else if (m.type === 'error' && !workerCtx.ready) {
@@ -54,7 +55,7 @@ export function cancel() {
   if (!activeRequest) return;
   const req = activeRequest;
   activeRequest = null;
-  try { req.abort(); } catch {}
+  req.abort();
   if (workerCtx?.worker) {
     workerCtx.worker.postMessage({ type: 'stop' });
     if (req.listener) workerCtx.worker.removeEventListener('message', req.listener);
@@ -104,6 +105,7 @@ export async function analyzePosition(fen, options = {}) {
     if (res.ok) {
       const data = await res.json();
       if (activeRequest !== myRequest) return pending;
+      // Empty pvs from a 200 response → treat as cloud-miss and fall through to local.
       if (data && data.pvs && data.pvs.length) {
         const top = data.pvs[0];
         const result = {
@@ -128,41 +130,49 @@ export async function analyzePosition(fen, options = {}) {
 
   // ── Step 2: local Stockfish.
   if (activeRequest !== myRequest) return pending;
-  await ensureWorker();
-  if (activeRequest !== myRequest) return pending;
-  const worker = workerCtx.worker;
-  const result = await new Promise((resolve, reject) => {
-    if (activeRequest !== myRequest) {
-      const err = new Error('Analysis cancelled');
-      err.name = 'AbortError';
-      reject(err);
-      return;
-    }
-    let lastInfo = null;
-    const listener = (e) => {
-      const m = e.data;
-      if (m.type === 'info' && m.multipv === 1) {
-        lastInfo = m;
-      } else if (m.type === 'bestmove') {
-        worker.removeEventListener('message', listener);
-        const out = lastInfo
-          ? {
-              source: 'local',
-              depth,
-              reachedDepth: lastInfo.depth ?? depth,
-              cp: lastInfo.mate != null ? null : lastInfo.cp,
-              mate: lastInfo.mate ?? null,
-              pvs: [{ cp: lastInfo.mate != null ? null : lastInfo.cp, mate: lastInfo.mate ?? null, moves: lastInfo.pv }],
-            }
-          : { source: 'local', depth, reachedDepth: 0, cp: null, mate: null, pvs: [] };
-        resolve(out);
+  try {
+    await ensureWorker();
+    if (activeRequest !== myRequest) return pending;
+    const worker = workerCtx.worker;
+    const result = await new Promise((resolve, reject) => {
+      if (activeRequest !== myRequest) {
+        const err = new Error('Analysis cancelled');
+        err.name = 'AbortError';
+        reject(err);
+        return;
       }
-    };
-    worker.addEventListener('message', listener);
-    activeRequest.listener = listener;
-    worker.postMessage({ type: 'analyze', fen, depth, multiPV });
-  });
+      let lastInfo = null;
+      const listener = (e) => {
+        const m = e.data;
+        if (m.type === 'info' && m.multipv === 1) {
+          lastInfo = m;
+        } else if (m.type === 'bestmove') {
+          worker.removeEventListener('message', listener);
+          const out = lastInfo
+            ? {
+                source: 'local',
+                depth,
+                reachedDepth: lastInfo.depth ?? depth,
+                cp: lastInfo.mate != null ? null : lastInfo.cp,
+                mate: lastInfo.mate ?? null,
+                pvs: [{ cp: lastInfo.mate != null ? null : lastInfo.cp, mate: lastInfo.mate ?? null, moves: lastInfo.pv }],
+              }
+            : { source: 'local', depth, reachedDepth: 0, cp: null, mate: null, pvs: [] };
+          resolve(out);
+        } else if (m.type === 'error') {
+          worker.removeEventListener('message', listener);
+          reject(Object.assign(new Error(m.message || 'Engine error'), { name: 'EngineError' }));
+        }
+      };
+      worker.addEventListener('message', listener);
+      activeRequest.listener = listener;
+      worker.postMessage({ type: 'analyze', fen, depth, multiPV });
+    });
 
-  if (activeRequest === myRequest) activeRequest = null;
-  return result;
+    if (activeRequest === myRequest) activeRequest = null;
+    return result;
+  } catch (e) {
+    if (activeRequest === myRequest) activeRequest = null;
+    throw e;
+  }
 }
