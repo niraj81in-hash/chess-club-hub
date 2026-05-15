@@ -1,4 +1,7 @@
-const CACHE = 'cch-v7';
+const CACHE = 'cch-v8';
+// Files listed here are precached atomically on install — any single 404 makes
+// the new service worker fail to activate, leaving the previous version live.
+// Only list files that actually exist on this branch.
 const STATIC = [
   '/',
   '/index.html',
@@ -17,8 +20,6 @@ const STATIC = [
   '/tournament/bracket.js',
   '/multiplayer/relay.js',
   '/js/utils.js',
-  '/js/ui/icons.js',
-  '/js/ui/primitives.js',
   '/js/ui/eval-graph.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
