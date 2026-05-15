@@ -84,3 +84,29 @@ describe('analyzePosition — cancellation', () => {
     await expect(first).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
+
+import { analyzeGame } from '../engine/analysis.js';
+import { initGameState, makeMove } from '../chess/engine.js';
+
+describe('analyzeGame — full-game pass', () => {
+  it('returns one eval per position (initial + after each move)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
+    const moves = [
+      { from: [6, 4], to: [4, 4] },  // e2e4
+      { from: [1, 4], to: [3, 4] },  // e7e5
+    ];
+    const result = await analyzeGame(moves, { depth: 10 });
+    expect(result.evals.length).toBe(3);   // initial + after move 1 + after move 2
+    expect(result.qualities.length).toBe(2); // one per actual move
+  });
+
+  it('streams progress for each position', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
+    const moves = [{ from: [6, 4], to: [4, 4] }, { from: [1, 4], to: [3, 4] }];
+    const updates = [];
+    await analyzeGame(moves, { depth: 10 }, (p) => updates.push(p));
+    expect(updates.length).toBe(3);
+    expect(updates[0]).toMatchObject({ index: 0, total: 3 });
+    expect(updates[2]).toMatchObject({ index: 2, total: 3 });
+  });
+});

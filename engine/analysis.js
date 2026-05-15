@@ -1,4 +1,6 @@
 import { createEngineWorker } from './stockfish-loader.js';
+import { initGameState, makeMove } from '../chess/engine.js';
+import { classify } from './move-quality.js';
 
 // ── Cheap FEN sanity check — pre-empts both engines for terminal/garbage input.
 function isPlausibleFen(fen) {
@@ -175,4 +177,67 @@ export async function analyzePosition(fen, options = {}) {
     if (activeRequest === myRequest) activeRequest = null;
     throw e;
   }
+}
+
+// Build a FEN-ish string from a state object (chess/engine.js produces piece codes like 'wK').
+// Minimal correct FEN for analysis — only board, side, castling, en passant, half/full moves.
+function stateToFen(state) {
+  const PIECE_FEN = { wK:'K', wQ:'Q', wR:'R', wB:'B', wN:'N', wP:'P', bK:'k', bQ:'q', bR:'r', bB:'b', bN:'n', bP:'p' };
+  const rankStrs = state.board.map((row) => {
+    let s = '';
+    let empty = 0;
+    for (const sq of row) {
+      if (!sq) { empty++; continue; }
+      if (empty) { s += empty; empty = 0; }
+      s += PIECE_FEN[sq];
+    }
+    if (empty) s += empty;
+    return s;
+  });
+  let castling = '';
+  if (state.castling?.wK) castling += 'K';
+  if (state.castling?.wQ) castling += 'Q';
+  if (state.castling?.bK) castling += 'k';
+  if (state.castling?.bQ) castling += 'q';
+  if (!castling) castling = '-';
+  let ep = '-';
+  if (state.enPassant) {
+    const [r, c] = state.enPassant;
+    ep = String.fromCharCode(97 + c) + (8 - r);
+  }
+  return `${rankStrs.join('/')} ${state.turn} ${castling} ${ep} ${state.halfMove ?? 0} ${state.fullMove ?? 1}`;
+}
+
+// Iterates positions (initial + after each move), analyzes each, classifies each move.
+// onProgress: called after each position with { index, total, eval, classification }.
+export async function analyzeGame(moves, options = {}, onProgress = () => {}) {
+  const depth = options.depth ?? 14;
+  const total = moves.length + 1;
+  const evals = [];
+  const qualities = [];
+
+  // Build the sequence of positions by replaying moves through the engine.
+  let state = initGameState();
+  const positions = [state];
+  for (const m of moves) {
+    state = makeMove(state, m.from, m.to, m.promotion || 'Q');
+    positions.push(state);
+  }
+
+  for (let i = 0; i < positions.length; i++) {
+    const fen = stateToFen(positions[i]);
+    const ev = await analyzePosition(fen, { depth, multiPV: 1 });
+    evals.push({ cp: ev.cp, mate: ev.mate, depth: ev.reachedDepth });
+
+    let classification = null;
+    if (i > 0) {
+      // The side that just moved is the OPPOSITE of positions[i].turn.
+      const sideJustMoved = positions[i].turn === 'w' ? 'b' : 'w';
+      classification = classify(evals[i - 1], evals[i], sideJustMoved);
+      qualities.push(classification);
+    }
+    onProgress({ index: i, total, eval: evals[i], classification });
+  }
+
+  return { evals, qualities, depth, version: 'stockfish-16', ranAt: Date.now() };
 }
