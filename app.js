@@ -23,6 +23,7 @@ import { createEvent, updateEvent, publishEvent,
          getEvents, getMyEvents, formatEventDate, validateEventForm } from './js/events.js';
 import { registerForEvent, getMyRegistration, validateRegistrationForm } from './js/registrations.js';
 import { analyzePosition, analyzeGame, cancel as cancelEngine } from './engine/analysis.js';
+import { renderEvalGraph } from './js/ui/eval-graph.js';
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -1308,6 +1309,15 @@ async function renderReviewList() {
 window.loadReview = async function(id) {
   reviewGame = await getGame(id); if(!reviewGame) return;
   reviewIdx=reviewGame.moves.length;
+  // Refresh the Analyze button label if cached analysis exists.
+  const btn = document.getElementById('analyze-game-btn');
+  if (reviewGame.analysis) {
+    btn.textContent = `⚙️ Re-analyze (was depth ${reviewGame.analysis.depth})`;
+    renderEvalGraphForGame();
+  } else {
+    btn.textContent = '⚙️ Analyze game';
+    document.getElementById('eval-graph-container').hidden = true;
+  }
   document.getElementById('review-list').style.display='none';
   document.getElementById('review-board-view').style.display='block';
   renderReviewBoard(); renderReviewMoveList();
@@ -1423,6 +1433,63 @@ function refreshEngineForCurrentPosition() {
   // The existing renderReviewBoard() already calls fetchEngineEval with the
   // current FEN. Re-rendering is the simplest re-trigger.
   renderReviewBoard();
+}
+
+window.runAnalyzeGame = async function() {
+  if (!reviewGame) return;
+  const btn          = document.getElementById('analyze-game-btn');
+  const progressWrap = document.getElementById('analyze-progress');
+  const progressFill = document.getElementById('analyze-progress-fill');
+  const progressLabel= document.getElementById('analyze-progress-label');
+
+  // Confirmation if depth >= 20.
+  if (engineDepth >= 20) {
+    const cores = navigator.hardwareConcurrency || 2;
+    const warn = cores <= 2
+      ? `Full-game analysis at depth ${engineDepth} may take 10+ minutes on this device. Continue?`
+      : `Full-game analysis at depth ${engineDepth} will take several minutes. Continue?`;
+    if (!confirm(warn)) return;
+  }
+
+  const fullGameDepth = engineDepth >= 20 ? engineDepth : 14;  // lighter default per spec
+  btn.disabled = true;
+  progressWrap.hidden = false;
+  progressFill.style.width = '0%';
+  progressLabel.textContent = 'Starting…';
+
+  let result;
+  try {
+    result = await analyzeGame(reviewGame.moves, { depth: fullGameDepth }, (p) => {
+      const pct = ((p.index + 1) / p.total) * 100;
+      progressFill.style.width = pct.toFixed(1) + '%';
+      progressLabel.textContent = `Move ${p.index}/${p.total - 1}`;
+    });
+  } catch (e) {
+    progressLabel.textContent = 'Analysis cancelled';
+    btn.disabled = false;
+    setTimeout(() => { progressWrap.hidden = true; }, 1500);
+    return;
+  }
+
+  // Persist on the game record.
+  reviewGame.analysis = result;
+  await saveGame(reviewGame);
+
+  renderEvalGraphForGame();
+  renderReviewMoveList();
+  progressWrap.hidden = true;
+  btn.disabled = false;
+};
+
+function renderEvalGraphForGame() {
+  const container = document.getElementById('eval-graph-container');
+  while (container.firstChild) container.removeChild(container.firstChild);
+  if (!reviewGame?.analysis?.evals?.length) { container.hidden = true; return; }
+  const svg = renderEvalGraph(reviewGame.analysis.evals, {
+    onClick: (idx) => { reviewIdx = idx; renderReviewBoard(); renderReviewMoveList(); },
+  });
+  container.appendChild(svg);
+  container.hidden = false;
 }
 
 window.reviewNav = function(dir) {
