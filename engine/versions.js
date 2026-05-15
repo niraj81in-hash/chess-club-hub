@@ -1,9 +1,12 @@
-// Registry of available Stockfish engines. Adding a future version is a single
-// entry here — analysis.js and the UI consume this registry by id.
+// Registry of available Stockfish engines. The id and label must match the
+// actual binary version on the CDN (e.g. 'stockfish-16' for Stockfish 16
+// NNUE). When a newer Stockfish becomes available on the same CDN, add a new
+// entry (e.g. 'stockfish-17' → SF17 URLs) rather than mutating this one, and
+// update DEFAULT_ENGINE to point at it.
 
 export const ENGINES = {
-  'stockfish-17': {
-    label: 'Stockfish 17',
+  'stockfish-16': {
+    label: 'Stockfish 16',
     // Single-threaded build — works in every browser, no special headers required.
     st: 'https://cdn.jsdelivr.net/npm/stockfish@16.1.0/src/stockfish-nnue-16-single.js',
     // Multi-threaded build — requires SharedArrayBuffer + COOP/COEP headers.
@@ -13,7 +16,7 @@ export const ENGINES = {
   },
 };
 
-export const DEFAULT_ENGINE = 'stockfish-17';
+export const DEFAULT_ENGINE = 'stockfish-16';
 
 export function getEngine(id) {
   const e = ENGINES[id];

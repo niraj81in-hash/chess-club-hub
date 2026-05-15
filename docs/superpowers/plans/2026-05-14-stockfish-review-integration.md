@@ -6,7 +6,7 @@
 
 **Architecture:** New `engine/` module with a single public API (`engine/analysis.js`). It tries Lichess cloud-eval first per position, falls back to local Stockfish via a wrapper Web Worker. A pure classifier (`engine/move-quality.js`) tags each move best/excellent/good/inaccuracy/mistake/blunder. Results persist in IndexedDB on the game record. UI: settings strip (depth presets + custom slider + version dropdown + source badge), Analyze button, SVG eval graph, inline move badges.
 
-**Tech Stack:** Vanilla JS ES modules (no build step), Vitest (unit tests), Web Worker + UCI protocol, Stockfish 17 WASM via jsdelivr CDN, SVG for the eval graph, IndexedDB for analysis persistence.
+**Tech Stack:** Vanilla JS ES modules (no build step), Vitest (unit tests), Web Worker + UCI protocol, Stockfish 16 WASM via jsdelivr CDN, SVG for the eval graph, IndexedDB for analysis persistence.
 
 **Spec:** `docs/superpowers/specs/2026-05-14-stockfish-review-integration-design.md`
 
@@ -48,14 +48,14 @@ import { describe, it, expect } from 'vitest';
 import { ENGINES, DEFAULT_ENGINE, getEngine } from '../engine/versions.js';
 
 describe('engine registry', () => {
-  it('has stockfish-17 as the default', () => {
-    expect(DEFAULT_ENGINE).toBe('stockfish-17');
+  it('has stockfish-16 as the default', () => {
+    expect(DEFAULT_ENGINE).toBe('stockfish-16');
     expect(ENGINES[DEFAULT_ENGINE]).toBeDefined();
   });
 
-  it('stockfish-17 has label, st URL, mt URL', () => {
-    const e = ENGINES['stockfish-17'];
-    expect(e.label).toBe('Stockfish 17');
+  it('stockfish-16 has label, st URL, mt URL', () => {
+    const e = ENGINES['stockfish-16'];
+    expect(e.label).toBe('Stockfish 16');
     expect(typeof e.st).toBe('string');
     expect(typeof e.mt).toBe('string');
     expect(e.st).toMatch(/^https:/);
@@ -63,8 +63,8 @@ describe('engine registry', () => {
   });
 
   it('getEngine returns the engine record for a known id', () => {
-    const e = getEngine('stockfish-17');
-    expect(e.label).toBe('Stockfish 17');
+    const e = getEngine('stockfish-16');
+    expect(e.label).toBe('Stockfish 16');
   });
 
   it('getEngine throws for an unknown id', () => {
@@ -87,8 +87,8 @@ Expected: FAIL with `Cannot find module '../engine/versions.js'`
 // entry here — analysis.js and the UI consume this registry by id.
 
 export const ENGINES = {
-  'stockfish-17': {
-    label: 'Stockfish 17',
+  'stockfish-16': {
+    label: 'Stockfish 16',
     // Single-threaded build — works in every browser, no special headers required.
     st: 'https://cdn.jsdelivr.net/npm/stockfish@16.1.0/src/stockfish-nnue-16-single.js',
     // Multi-threaded build — requires SharedArrayBuffer + COOP/COEP headers.
@@ -98,7 +98,7 @@ export const ENGINES = {
   },
 };
 
-export const DEFAULT_ENGINE = 'stockfish-17';
+export const DEFAULT_ENGINE = 'stockfish-16';
 
 export function getEngine(id) {
   const e = ENGINES[id];
@@ -107,7 +107,7 @@ export function getEngine(id) {
 }
 ```
 
-Note: the jsdelivr URL points at the `stockfish` npm package as a stable, well-known build that exposes Stockfish 16 NNUE. Stockfish 17 WASM under that package name will be a one-line bump when published. The `Stockfish 17` label is the user-facing brand and stays stable; the URL is the binding to whatever build is current.
+Note: the jsdelivr URL points at `stockfish@16.1.0` on npm — Stockfish 16 NNUE, the most recent build currently published on the public CDN. Identifier (`stockfish-16`) and label (`Stockfish 16`) match the binary, which keeps the registry honest. When a later Stockfish version becomes available on the same CDN, add a new entry to `ENGINES` (e.g. `'stockfish-17'` → SF17 URLs) and update `DEFAULT_ENGINE` to point at it; do not mutate the existing `stockfish-16` entry.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -120,7 +120,7 @@ Expected: PASS (4 tests)
 
 ```bash
 git add engine/versions.js tests/versions.test.js
-git commit -m "feat(engine): add engine registry — Stockfish 17 single + multi-threaded URLs"
+git commit -m "feat(engine): add engine registry — Stockfish 16 single + multi-threaded URLs"
 ```
 
 ---
@@ -324,7 +324,7 @@ describe('pickStockfishUrl', () => {
   it('picks single-threaded URL when SAB unavailable', () => {
     delete globalThis.SharedArrayBuffer;
     globalThis.crossOriginIsolated = false;
-    const { url, threaded } = pickStockfishUrl('stockfish-17');
+    const { url, threaded } = pickStockfishUrl('stockfish-16');
     expect(threaded).toBe(false);
     expect(url).toMatch(/single/);
   });
@@ -332,7 +332,7 @@ describe('pickStockfishUrl', () => {
   it('picks single-threaded URL when crossOriginIsolated is false', () => {
     globalThis.SharedArrayBuffer = ArrayBuffer; // stub
     globalThis.crossOriginIsolated = false;
-    const { url, threaded } = pickStockfishUrl('stockfish-17');
+    const { url, threaded } = pickStockfishUrl('stockfish-16');
     expect(threaded).toBe(false);
     expect(url).toMatch(/single/);
   });
@@ -340,7 +340,7 @@ describe('pickStockfishUrl', () => {
   it('picks multi-threaded URL when both SAB and crossOriginIsolated are true', () => {
     globalThis.SharedArrayBuffer = ArrayBuffer; // stub
     globalThis.crossOriginIsolated = true;
-    const { url, threaded } = pickStockfishUrl('stockfish-17');
+    const { url, threaded } = pickStockfishUrl('stockfish-16');
     expect(threaded).toBe(true);
     expect(url).not.toMatch(/single/);
   });
@@ -531,7 +531,7 @@ vi.mock('../engine/stockfish-loader.js', () => {
       };
       // Fire 'ready' on the next tick.
       queueMicrotask(() => listeners.forEach((cb) => cb({ data: { type: 'ready' } })));
-      return { worker, threaded: false, engineId: 'stockfish-17' };
+      return { worker, threaded: false, engineId: 'stockfish-16' };
     },
   };
 });
@@ -892,7 +892,7 @@ export async function analyzeGame(moves, options = {}, onProgress = () => {}) {
     onProgress({ index: i, total, eval: evals[i], classification });
   }
 
-  return { evals, qualities, depth, version: 'stockfish-17', ranAt: Date.now() };
+  return { evals, qualities, depth, version: 'stockfish-16', ranAt: Date.now() };
 }
 ```
 
@@ -932,7 +932,7 @@ Find the surrounding container that holds the existing `engine-eval`, `engine-li
     <label class="engine-setting">
       <span>Engine</span>
       <select id="engine-version" disabled>
-        <option value="stockfish-17">Stockfish 17</option>
+        <option value="stockfish-16">Stockfish 16</option>
       </select>
     </label>
     <div class="engine-setting depth-presets" role="radiogroup" aria-label="Analysis depth">
