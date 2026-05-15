@@ -22,6 +22,7 @@ import { escapeHtml, isLinkedAccount } from './js/utils.js';
 import { createEvent, updateEvent, publishEvent,
          getEvents, getMyEvents, formatEventDate, validateEventForm } from './js/events.js';
 import { registerForEvent, getMyRegistration, validateRegistrationForm } from './js/registrations.js';
+import { analyzePosition, analyzeGame, cancel as cancelEngine } from './engine/analysis.js';
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -46,6 +47,8 @@ let cpuThinking  = false;
 // Review
 let reviewGame = null;
 let reviewIdx  = 0;
+let engineDepth = 18;          // active per-position depth
+let engineSource = '';         // 'cloud' | 'local' | ''
 
 /** Opponent Firebase uid (online games) for server ELO */
 let opponentUid = null;
@@ -553,6 +556,8 @@ async function initUI() {
   updatePlayerFields();
   await loadProfile();
   await renderHome();
+
+  initEngineSettingsStrip();
 
   try {
     const { refreshIcons } = await import('./js/ui/icons.js');
@@ -1309,24 +1314,51 @@ window.loadReview = async function(id) {
 };
 
 window.backToList = async function() {
+  cancelEngine();
   document.getElementById('review-list').style.display='block';
   document.getElementById('review-board-view').style.display='none';
-  engineController?.abort();
   await renderReviewList();
 };
 
-// ── Lichess cloud engine eval ─────────────────────────────────
+// ── Engine eval (cloud → local fallback via engine/analysis.js) ───
 
-let engineController = null;
+function initEngineSettingsStrip() {
+  const chips = document.querySelectorAll('.depth-chip');
+  const slider = document.getElementById('depth-slider');
+  const sliderWrap = document.getElementById('depth-slider-wrap');
+  const sliderVal = document.getElementById('depth-slider-val');
+
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      chips.forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      const v = chip.dataset.depth;
+      if (v === 'custom') {
+        sliderWrap.hidden = false;
+        engineDepth = Number(slider.value);
+      } else {
+        sliderWrap.hidden = true;
+        engineDepth = Number(v);
+      }
+      if (reviewGame) refreshEngineForCurrentPosition();
+    });
+  });
+
+  slider.addEventListener('input', () => {
+    sliderVal.textContent = slider.value;
+    engineDepth = Number(slider.value);
+    if (reviewGame && document.getElementById('depth-custom-toggle').classList.contains('active')) {
+      refreshEngineForCurrentPosition();
+    }
+  });
+}
 
 async function fetchEngineEval(fen) {
   const evalEl   = document.getElementById('engine-eval');
   const linesEl  = document.getElementById('engine-lines');
   const depthEl  = document.getElementById('engine-depth');
   const statusEl = document.getElementById('engine-status');
-
-  engineController?.abort();
-  engineController = new AbortController();
+  const sourceEl = document.getElementById('engine-source');
 
   evalEl.textContent  = '…';
   evalEl.style.color  = 'var(--text-dim)';
@@ -1334,38 +1366,63 @@ async function fetchEngineEval(fen) {
   depthEl.textContent = '';
   statusEl.textContent = '';
 
+  let result;
   try {
-    const res = await fetch(
-      `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=3`,
-      { signal: engineController.signal }
-    );
-    if (!res.ok) { statusEl.textContent = 'Position not in cloud cache'; evalEl.textContent = '—'; return; }
-    const data = await res.json();
-    depthEl.textContent = `depth ${data.depth}`;
-    const pvs = data.pvs || [];
-    if (!pvs.length) { evalEl.textContent = '—'; return; }
-
-    const top = pvs[0];
-    if (top.mate != null) {
-      const m = top.mate;
-      evalEl.textContent = m > 0 ? `M${m}` : `-M${Math.abs(m)}`;
-      evalEl.style.color = m > 0 ? 'var(--emerald)' : 'var(--red)';
-    } else {
-      const cp = top.cp / 100;
-      evalEl.textContent = (cp >= 0 ? '+' : '') + cp.toFixed(2);
-      evalEl.style.color = cp > 0.3 ? 'var(--emerald)' : cp < -0.3 ? 'var(--red)' : 'var(--text)';
-    }
-
-    linesEl.innerHTML = pvs.map(pv => {
-      const score = pv.mate != null
-        ? (pv.mate > 0 ? `M${pv.mate}` : `-M${Math.abs(pv.mate)}`)
-        : ((pv.cp >= 0 ? '+' : '') + (pv.cp / 100).toFixed(2));
-      const moves = pv.moves.split(' ').slice(0, 6).join(' ');
-      return `<div><span style="color:var(--gold);display:inline-block;min-width:3.5rem;">${score}</span>${moves}</div>`;
-    }).join('');
+    result = await analyzePosition(fen, { depth: engineDepth, multiPV: 3 });
   } catch (e) {
-    if (e.name !== 'AbortError') { statusEl.textContent = 'Engine unavailable'; evalEl.textContent = '—'; }
+    if (e?.name === 'AbortError') return;
+    statusEl.textContent = "Engine couldn't load. Reconnect and try again.";
+    evalEl.textContent = '—';
+    // Disable the Analyze button when the engine can't load.
+    const analyzeBtn = document.getElementById('analyze-game-btn');
+    if (analyzeBtn) analyzeBtn.disabled = true;
+    return;
   }
+
+  if (result.reason === 'terminal' || !result.pvs.length) {
+    evalEl.textContent = '—';
+    return;
+  }
+
+  // Source badge
+  sourceEl.textContent = result.source === 'cloud' ? 'Cloud' : 'Local';
+  sourceEl.className = `engine-source ${result.source}`;
+  engineSource = result.source;
+
+  depthEl.textContent = `depth ${result.reachedDepth}`;
+  const top = result.pvs[0];
+  if (top.mate != null) {
+    const m = top.mate;
+    evalEl.textContent = m > 0 ? `M${m}` : `-M${Math.abs(m)}`;
+    evalEl.style.color = m > 0 ? 'var(--emerald)' : 'var(--red)';
+  } else {
+    const cp = top.cp / 100;
+    evalEl.textContent = (cp >= 0 ? '+' : '') + cp.toFixed(2);
+    evalEl.style.color = cp > 0.3 ? 'var(--emerald)' : cp < -0.3 ? 'var(--red)' : 'var(--text)';
+  }
+
+  // PV lines — DOM-built (no innerHTML).
+  while (linesEl.firstChild) linesEl.removeChild(linesEl.firstChild);
+  for (const pv of result.pvs) {
+    const row = document.createElement('div');
+    const score = document.createElement('span');
+    score.style.color = 'var(--gold)';
+    score.style.display = 'inline-block';
+    score.style.minWidth = '3.5rem';
+    score.textContent = pv.mate != null
+      ? (pv.mate > 0 ? `M${pv.mate}` : `-M${Math.abs(pv.mate)}`)
+      : ((pv.cp >= 0 ? '+' : '') + (pv.cp / 100).toFixed(2));
+    row.appendChild(score);
+    row.appendChild(document.createTextNode(pv.moves.split(' ').slice(0, 6).join(' ')));
+    linesEl.appendChild(row);
+  }
+}
+
+function refreshEngineForCurrentPosition() {
+  if (!reviewGame) return;
+  // The existing renderReviewBoard() already calls fetchEngineEval with the
+  // current FEN. Re-rendering is the simplest re-trigger.
+  renderReviewBoard();
 }
 
 window.reviewNav = function(dir) {
