@@ -1,4 +1,4 @@
-const CACHE = 'cch-v5';
+const CACHE = 'cch-v6';
 const STATIC = [
   '/',
   '/index.html',
@@ -42,11 +42,13 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Network-first for Firebase, Google APIs, and Lichess (live data)
+  // Pass-through for live data and cross-origin engine binaries — the browser
+  // HTTP cache handles re-use after the first fetch.
   const isExternal = url.hostname.includes('firebase') ||
                      url.hostname.includes('googleapis') ||
                      url.hostname.includes('gstatic') ||
-                     url.hostname.includes('lichess');
+                     url.hostname.includes('lichess') ||
+                     url.hostname.includes('jsdelivr');
   if (isExternal) {
     e.respondWith(fetch(e.request).catch(() => new Response('', { status: 503 })));
     return;
